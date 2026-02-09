@@ -29,7 +29,7 @@ function App() {
             <Route path="/request-leave" element={<RequestLeave />} />
             <Route path="/my-leaves" element={<MyLeaves />} />
             <Route path="/team-leaves" element={<TeamLeaves />} />
-            <Route path="/hr/leaves" element={<HRLeaves />} />
+            <Route path="/hr-leaves" element={<HRLeaves />} />
             <Route path="/users" element={<UserManagement />} />
             <Route path="/audit-logs" element={<AuditLogs />} />
             <Route path="/reports" element={<Reports />} />

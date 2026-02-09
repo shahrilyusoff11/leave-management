@@ -11,16 +11,43 @@ import {
     FileText,
     Settings,
     User,
-    Layers
+    Layers,
+    Building
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils/cn';
 import { Button } from './ui/Button';
+import type { UserRole } from '../types';
 
 interface SidebarProps {
     isOpen: boolean;
     onClose: () => void;
 }
+
+// Role hierarchy helpers
+const isManager = (role?: UserRole) =>
+    role === 'manager' || role === 'hod' || role === 'hr' || role === 'admin' || role === 'sysadmin';
+
+const isHR = (role?: UserRole) =>
+    role === 'hr' || role === 'admin' || role === 'sysadmin';
+
+const isAdmin = (role?: UserRole) =>
+    role === 'admin' || role === 'sysadmin';
+
+const isSysAdmin = (role?: UserRole) =>
+    role === 'sysadmin';
+
+const getRoleLabel = (role?: UserRole) => {
+    switch (role) {
+        case 'sysadmin': return 'System Administrator';
+        case 'admin': return 'Administrator';
+        case 'hr': return 'Human Resources';
+        case 'hod': return 'Head of Department';
+        case 'manager': return 'Manager';
+        case 'staff': return 'Staff';
+        default: return role || 'Unknown';
+    }
+};
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     const { user, logout } = useAuth();
@@ -79,7 +106,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     {/* User Info */}
                     <div className="p-4 mx-4 mt-4 rounded-xl bg-slate-50 border border-slate-100">
                         <p className="font-semibold text-sm text-slate-900">{user?.first_name} {user?.last_name}</p>
-                        <p className="text-xs text-slate-500 capitalize">{user?.role}</p>
+                        <p className="text-xs text-slate-500">{getRoleLabel(user?.role)}</p>
+                        {user?.department && (
+                            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                                <Building className="h-3 w-3" />
+                                {user.department}
+                            </p>
+                        )}
                     </div>
 
                     {/* Navigation */}
@@ -91,28 +124,38 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         <NavItem to="/my-leaves" icon={CalendarDays}>My Leaves</NavItem>
                         <NavItem to="/request-leave" icon={PlusCircle}>Request Leave</NavItem>
 
-                        {(user?.role === 'manager' || user?.role === 'hr' || user?.role === 'admin' || user?.role === 'sysadmin') && (
+                        {/* Manager/HOD: Team management */}
+                        {isManager(user?.role) && (
                             <>
                                 <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Management</div>
                                 <NavItem to="/team-leaves" icon={Users}>Team Requests</NavItem>
                             </>
                         )}
 
-                        {(user?.role === 'hr' || user?.role === 'admin' || user?.role === 'sysadmin') && (
+                        {/* HR: User management and reports */}
+                        {isHR(user?.role) && (
                             <>
-                                <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Administration</div>
-                                <NavItem to="/users" icon={Users}>Users</NavItem>
+                                <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">HR Administration</div>
+                                <NavItem to="/users" icon={Users}>User Management</NavItem>
+                                <NavItem to="/hr-leaves" icon={CalendarDays}>All Leave Requests</NavItem>
                                 <NavItem to="/reports" icon={FileText}>Reports</NavItem>
                             </>
                         )}
 
-                        {/* Admin only */}
-                        {(user?.role === 'admin' || user?.role === 'sysadmin') && (
+                        {/* Admin: System configuration */}
+                        {isAdmin(user?.role) && (
                             <>
-                                <NavItem to="/holidays" icon={CalendarDays}>Holidays</NavItem>
-                                <NavItem to="/audit-logs" icon={ShieldCheck}>Audit Logs</NavItem>
-                                <NavItem to="/settings" icon={Settings}>System Settings</NavItem>
+                                <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">System</div>
+                                <NavItem to="/holidays" icon={CalendarDays}>Public Holidays</NavItem>
                                 <NavItem to="/leave-type-settings" icon={Layers}>Leave Types</NavItem>
+                                <NavItem to="/settings" icon={Settings}>System Settings</NavItem>
+                            </>
+                        )}
+
+                        {/* SysAdmin: Audit and advanced */}
+                        {isSysAdmin(user?.role) && (
+                            <>
+                                <NavItem to="/audit-logs" icon={ShieldCheck}>Audit Logs</NavItem>
                             </>
                         )}
                     </nav>
