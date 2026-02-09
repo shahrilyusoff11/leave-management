@@ -206,3 +206,118 @@ func (h *LeaveHandler) GetLeaveRequestChronology(c *gin.Context) {
 
 	c.JSON(http.StatusOK, chronology)
 }
+
+// GetWorkflowState returns the current workflow state for a leave request
+func (h *LeaveHandler) GetWorkflowState(c *gin.Context) {
+	requestID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+		return
+	}
+
+	workflowSvc := h.leaveService.GetWorkflowService()
+	state, err := workflowSvc.GetWorkflowState(requestID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow state not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, state)
+}
+
+// PerformWorkflowAction executes a workflow action on a leave request
+func (h *LeaveHandler) PerformWorkflowAction(c *gin.Context) {
+	requestID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+		return
+	}
+
+	actorID := c.MustGet("user_id").(uuid.UUID)
+
+	var req struct {
+		Action  string `json:"action" binding:"required"`
+		Comment string `json:"comment"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Map string action to WorkflowStepAction
+	actionMap := map[string]models.WorkflowStepAction{
+		"approve":           models.StepActionApproved,
+		"reject":            models.StepActionRejected,
+		"verify":            models.StepActionVerified,
+		"not_verify":        models.StepActionNotVerified,
+		"request_docs":      models.StepActionRequestedDocs,
+		"categorize_al":     models.StepActionCategorizedAL,
+		"categorize_unpaid": models.StepActionCategorizedUL,
+	}
+
+	action, ok := actionMap[req.Action]
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid action"})
+		return
+	}
+
+	workflowSvc := h.leaveService.GetWorkflowService()
+	state, err := workflowSvc.ProcessAction(requestID, action, actorID, req.Comment)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Also update leave request status if workflow is complete
+	if state.IsComplete {
+		h.updateLeaveRequestFromWorkflow(requestID, state)
+	}
+
+	c.JSON(http.StatusOK, state)
+}
+
+// updateLeaveRequestFromWorkflow syncs the leave request status with workflow final status
+func (h *LeaveHandler) updateLeaveRequestFromWorkflow(requestID uuid.UUID, state *models.LeaveRequestWorkflowState) {
+	request, err := h.leaveService.GetLeaveRequest(requestID)
+	if err != nil {
+		return
+	}
+
+	request.Status = state.FinalStatus
+	now := time.Now()
+	if state.FinalStatus == models.StatusApproved {
+		request.ApprovedAt = &now
+	} else if state.FinalStatus == models.StatusRejected {
+		request.RejectedAt = &now
+	}
+
+	h.leaveService.GetDB().Save(request)
+}
+
+// ConvertLeaveType converts a leave request to a different type (e.g., AL to EL)
+func (h *LeaveHandler) ConvertLeaveType(c *gin.Context) {
+	requestID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+		return
+	}
+
+	actorID := c.MustGet("user_id").(uuid.UUID)
+
+	var req struct {
+		NewType models.LeaveType `json:"new_type" binding:"required"`
+		Reason  string           `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	workflowSvc := h.leaveService.GetWorkflowService()
+	if err := workflowSvc.ConvertLeaveType(requestID, req.NewType, actorID, req.Reason); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Leave type converted successfully"})
+}

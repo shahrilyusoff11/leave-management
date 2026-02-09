@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Calendar, Filter, History, FileText } from 'lucide-react';
+import { Calendar, Filter, History, FileText, GitBranch } from 'lucide-react';
 import api from '../services/api';
 import type { LeaveRequest } from '../types';
 import { Card } from '../components/ui/Card';
@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getDisplayDuration, formatDuration } from '../utils/duration';
 import LeaveHistoryModal from '../components/LeaveHistoryModal';
+import WorkflowStateDisplay from '../components/WorkflowStateDisplay';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { useToast } from '../components/ui/Toast';
 
@@ -19,6 +20,7 @@ const MyLeaves: React.FC = () => {
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
     const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
     const [selectedLeaveType, setSelectedLeaveType] = useState<string>('');
+    const [showWorkflow, setShowWorkflow] = useState<Record<string, boolean>>({});
 
     // Confirmation Modal State
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
@@ -148,73 +150,96 @@ const MyLeaves: React.FC = () => {
                                 </tr>
                             ) : (
                                 filteredRequests.map((req) => (
-                                    <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-4 py-4">
-                                            <span className="capitalize font-medium text-slate-900">{req.leave_type}</span>
-                                        </td>
-                                        <td className="px-4 py-4 text-slate-600 whitespace-nowrap">
-                                            <div className="flex flex-col">
-                                                <span>{format(new Date(req.start_date), 'MMM d, yyyy')}</span>
-                                                <span className="text-xs text-slate-400">to {format(new Date(req.end_date), 'MMM d, yyyy')}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4 text-slate-600">
-                                            {formatDuration(getDisplayDuration(req.duration_days, req.start_date, req.end_date))}
-                                        </td>
-                                        <td className="px-4 py-4 text-slate-600 max-w-[200px]" title={req.reason}>
-                                            <div className="flex items-center gap-2">
-                                                <span className="truncate">{req.reason}</span>
-                                                {req.attachment_url && (
-                                                    <a
-                                                        href={req.attachment_url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-brand-600 hover:text-brand-700 inline-flex items-center shrink-0"
-                                                        title="View Attachment"
-                                                    >
-                                                        <FileText className="h-4 w-4" />
-                                                    </a>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4">
-                                            <div className="flex flex-col gap-1">
-                                                <Badge variant={getStatusVariant(req.status)}>
-                                                    {req.status}
-                                                </Badge>
-                                                {req.status === 'rejected' && req.rejection_reason && (
-                                                    <span className="text-xs text-red-600 italic max-w-[150px] truncate" title={req.rejection_reason}>
-                                                        "{req.rejection_reason}"
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4 text-slate-500 text-xs">
-                                            {format(new Date(req.created_at), 'MMM d, yyyy')}
-                                        </td>
-                                        <td className="px-4 py-4 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-slate-600 hover:text-slate-700 hover:bg-slate-50"
-                                                    onClick={() => openHistoryModal(req)}
-                                                >
-                                                    <History className="h-4 w-4" />
-                                                </Button>
-                                                {req.status === 'pending' && (
+                                    <React.Fragment key={req.id}>
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-4">
+                                                <span className="capitalize font-medium text-slate-900">{req.leave_type}</span>
+                                            </td>
+                                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap">
+                                                <div className="flex flex-col">
+                                                    <span>{format(new Date(req.start_date), 'MMM d, yyyy')}</span>
+                                                    <span className="text-xs text-slate-400">to {format(new Date(req.end_date), 'MMM d, yyyy')}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 text-slate-600">
+                                                {formatDuration(getDisplayDuration(req.duration_days, req.start_date, req.end_date))}
+                                            </td>
+                                            <td className="px-4 py-4 text-slate-600 max-w-[200px]" title={req.reason}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="truncate">{req.reason}</span>
+                                                    {req.attachment_url && (
+                                                        <a
+                                                            href={req.attachment_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-brand-600 hover:text-brand-700 inline-flex items-center shrink-0"
+                                                            title="View Attachment"
+                                                        >
+                                                            <FileText className="h-4 w-4" />
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <div className="flex flex-col gap-1">
+                                                    <Badge variant={getStatusVariant(req.status)}>
+                                                        {req.status}
+                                                    </Badge>
+                                                    {req.status === 'rejected' && req.rejection_reason && (
+                                                        <span className="text-xs text-red-600 italic max-w-[150px] truncate" title={req.rejection_reason}>
+                                                            "{req.rejection_reason}"
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 text-slate-500 text-xs">
+                                                {format(new Date(req.created_at), 'MMM d, yyyy')}
+                                            </td>
+                                            <td className="px-4 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                        onClick={() => initiateCancel(req.id)}
+                                                        className="h-8 w-8 p-0 rounded-full bg-purple-50 text-purple-600 hover:bg-purple-100"
+                                                        onClick={() => setShowWorkflow(prev => ({ ...prev, [req.id]: !prev[req.id] }))}
+                                                        title="View Workflow"
                                                     >
-                                                        Cancel
+                                                        <GitBranch className="h-4 w-4" />
                                                     </Button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-slate-600 hover:text-slate-700 hover:bg-slate-50"
+                                                        onClick={() => openHistoryModal(req)}
+                                                    >
+                                                        <History className="h-4 w-4" />
+                                                    </Button>
+                                                    {req.status === 'pending' && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                            onClick={() => initiateCancel(req.id)}
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {showWorkflow[req.id] && (
+                                            <tr className="bg-slate-50">
+                                                <td colSpan={7} className="px-4 py-3">
+                                                    <WorkflowStateDisplay
+                                                        requestId={req.id}
+                                                        currentStatus={req.status}
+                                                        onActionComplete={fetchRequests}
+                                                        showActions={false}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))
                             )}
                         </tbody>

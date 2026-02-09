@@ -10,19 +10,21 @@ import (
 )
 
 type CronJobs struct {
-	leaveService *services.LeaveService
-	emailService *services.EmailService
-	logger       *zap.Logger
-	cron         *cron.Cron
+	leaveService    *services.LeaveService
+	emailService    *services.EmailService
+	workflowService *services.WorkflowService
+	logger          *zap.Logger
+	cron            *cron.Cron
 }
 
 func NewCronJobs(leaveService *services.LeaveService,
-	emailService *services.EmailService, logger *zap.Logger) *CronJobs {
+	emailService *services.EmailService, workflowService *services.WorkflowService, logger *zap.Logger) *CronJobs {
 	return &CronJobs{
-		leaveService: leaveService,
-		emailService: emailService,
-		logger:       logger,
-		cron:         cron.New(cron.WithSeconds()),
+		leaveService:    leaveService,
+		emailService:    emailService,
+		workflowService: workflowService,
+		logger:          logger,
+		cron:            cron.New(cron.WithSeconds()),
 	}
 }
 
@@ -43,6 +45,12 @@ func (cj *CronJobs) Start() error {
 	_, err = cj.cron.AddFunc("0 59 23 31 12 *", cj.processYearEnd)
 	if err != nil {
 		return fmt.Errorf("failed to add year-end job: %w", err)
+	}
+
+	// Run every hour to check for workflow timeouts
+	_, err = cj.cron.AddFunc("0 0 * * * *", cj.processWorkflowTimeouts)
+	if err != nil {
+		return fmt.Errorf("failed to add workflow timeout job: %w", err)
 	}
 
 	cj.cron.Start()
@@ -129,4 +137,33 @@ func (cj *CronJobs) TriggerEscalationCheck() {
 
 func (cj *CronJobs) TriggerYearEndProcess() {
 	cj.processYearEnd()
+}
+
+// processWorkflowTimeouts checks for overdue workflow steps and applies timeout actions
+func (cj *CronJobs) processWorkflowTimeouts() {
+	cj.logger.Info("Processing workflow timeouts")
+
+	if cj.workflowService == nil {
+		cj.logger.Warn("Workflow service not available, skipping timeout processing")
+		return
+	}
+
+	processedIDs, err := cj.workflowService.ProcessTimeouts()
+	if err != nil {
+		cj.logger.Error("Failed to process workflow timeouts", zap.Error(err))
+		return
+	}
+
+	if len(processedIDs) > 0 {
+		cj.logger.Info("Workflow timeouts processed",
+			zap.Int("count", len(processedIDs)),
+			zap.Any("request_ids", processedIDs))
+	} else {
+		cj.logger.Debug("No workflow timeouts to process")
+	}
+}
+
+// TriggerWorkflowTimeouts allows manual triggering of workflow timeout processing
+func (cj *CronJobs) TriggerWorkflowTimeouts() {
+	cj.processWorkflowTimeouts()
 }

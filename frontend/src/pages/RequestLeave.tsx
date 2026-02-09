@@ -229,9 +229,9 @@ const RequestLeave: React.FC = () => {
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Specific Reason</label>
                                     <Input
-                                        {...register('unrecorded_leave_subtype')}
+                                        {...register('special_leave_type')}
                                         placeholder="e.g. Marriage, Hajj, Compassionate"
-                                        error={errors.unrecorded_leave_subtype?.message}
+                                        error={errors.special_leave_type?.message}
                                     />
                                     <p className="mt-1 text-xs text-slate-500">Please specify the type of unrecorded leave.</p>
                                 </div>

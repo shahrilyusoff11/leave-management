@@ -45,3 +45,66 @@ export interface LeaveBalance {
     adjusted: number;
     remaining: number; // Calculated, or implicit
 }
+
+// Workflow Types
+export type WorkflowActionType = 'approve' | 'verify' | 'review' | 'categorize' | 'submit';
+export type TimeoutAction = 'escalate' | 'auto_approve' | 'fallback_step' | 'convert_leave_type';
+export type WorkflowStepAction = 'pending' | 'approved' | 'rejected' | 'verified' | 'not_verified' |
+    'requested_docs' | 'escalated' | 'categorized_al' | 'categorized_unpaid' |
+    'converted_to_el' | 'converted_to_unpaid' | 'timeout_applied';
+
+export interface WorkflowStep {
+    id: string;
+    workflow_id: string;
+    step_order: number;
+    step_name: string;
+    step_label: string;
+    responsible_role: UserRole;
+    action_type: WorkflowActionType;
+    timeout_days: number;
+    timeout_action: TimeoutAction;
+    fallback_step_id?: string;
+    convert_to_type?: LeaveType;
+    conditions?: Record<string, any>;
+    next_step_on_approve?: string;
+    next_step_on_reject?: string;
+    notify_roles?: string[];
+    requires_document: boolean;
+    document_type?: string;
+    is_terminal: boolean;
+    terminal_status?: LeaveStatus;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface LeaveWorkflow {
+    id: string;
+    leave_type: LeaveType;
+    workflow_name: string;
+    description: string;
+    first_step_id?: string;
+    steps?: WorkflowStep[];
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface LeaveRequestWorkflowState {
+    id: string;
+    leave_request_id: string;
+    workflow_id: string;
+    current_step_id?: string;
+    current_step?: WorkflowStep;
+    step_started_at: string;
+    previous_step_id?: string;
+    action_taken: WorkflowStepAction;
+    action_by?: string;
+    action_comment?: string;
+    step_history?: Record<string, any>;
+    is_complete: boolean;
+    completed_at?: string;
+    final_status?: LeaveStatus;
+    created_at: string;
+    updated_at: string;
+}
+

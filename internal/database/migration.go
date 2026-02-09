@@ -24,6 +24,10 @@ func Migrate(db *gorm.DB) error {
 		&models.LeaveTypeConfig{},
 		&models.AuditLog{},
 		&services.SystemConfig{},
+		// Workflow models - LeaveWorkflow must come before WorkflowStep (FK dependency)
+		&models.LeaveWorkflow{},
+		&models.WorkflowStep{},
+		&models.LeaveRequestWorkflowState{},
 	)
 
 	if err != nil {
@@ -37,6 +41,11 @@ func Migrate(db *gorm.DB) error {
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_leave_balance_user_year ON leave_balances(user_id, year)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs(actor_id)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)")
+	// Workflow indexes
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow_id ON workflow_steps(workflow_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_workflow_steps_order ON workflow_steps(workflow_id, step_order)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_leave_workflows_leave_type ON leave_workflows(leave_type)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_workflow_states_request_id ON leave_request_workflow_states(leave_request_id)")
 
 	return nil
 }

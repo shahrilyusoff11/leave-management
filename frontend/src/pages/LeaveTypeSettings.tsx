@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Layers, Save, Check, X, Plus, Trash2 } from 'lucide-react';
+import { Layers, Save, Check, X, Plus, Trash2, Settings } from 'lucide-react';
 import api from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import WorkflowEditor from '../components/WorkflowEditor';
+import type { LeaveType } from '../types';
 
 interface LeaveTypeConfig {
     id: string;
@@ -45,6 +47,7 @@ const LeaveTypeSettings: React.FC = () => {
     const [serviceTiers, setServiceTiers] = useState<ServiceTier[]>([]);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+    const [workflowLeaveType, setWorkflowLeaveType] = useState<LeaveType | null>(null);
 
     const fetchConfigs = async () => {
         setLoading(true);
@@ -191,6 +194,16 @@ const LeaveTypeSettings: React.FC = () => {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
+                            <div className="mb-4 flex justify-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setWorkflowLeaveType(config.leave_type as LeaveType)}
+                                    className="text-sm flex items-center gap-1"
+                                >
+                                    <Settings className="h-4 w-4" />
+                                    Workflow
+                                </Button>
+                            </div>
                             {editingId === config.id ? (
                                 <div className="space-y-4">
                                     <div className="space-y-1">
@@ -453,6 +466,14 @@ const LeaveTypeSettings: React.FC = () => {
                     </Card>
                 ))}
             </div>
+
+            {/* Workflow Editor Modal */}
+            {workflowLeaveType && (
+                <WorkflowEditor
+                    leaveType={workflowLeaveType}
+                    onClose={() => setWorkflowLeaveType(null)}
+                />
+            )}
         </div>
     );
 };

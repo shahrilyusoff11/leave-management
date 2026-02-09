@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Filter } from 'lucide-react';
+import { Filter, GitBranch } from 'lucide-react';
 import api from '../services/api';
 import type { LeaveRequest } from '../types';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { getDisplayDuration, formatDuration } from '../utils/duration';
+import WorkflowStateDisplay from '../components/WorkflowStateDisplay';
 
 const HRLeaves: React.FC = () => {
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -14,6 +16,7 @@ const HRLeaves: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     const [deptFilter, setDeptFilter] = useState('');
     const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString());
+    const [showWorkflow, setShowWorkflow] = useState<Record<string, boolean>>({});
 
     const fetchRequests = async () => {
         setLoading(true);
@@ -118,50 +121,78 @@ const HRLeaves: React.FC = () => {
                                 <th className="px-6 py-4 font-semibold text-slate-600">Days</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Status</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Reason</th>
+                                <th className="px-6 py-4 font-semibold text-slate-600 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         Loading requests...
                                     </td>
                                 </tr>
                             ) : requests.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         No requests found matching criteria
                                     </td>
                                 </tr>
                             ) : (
                                 requests.map((req) => (
-                                    <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div>
-                                                <p className="font-medium text-slate-900">{req.user?.first_name} {req.user?.last_name}</p>
-                                                <p className="text-xs text-slate-500">{req.user?.email}</p>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 capitalize text-slate-700">
-                                            {req.leave_type}
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
-                                            <div className="flex flex-col">
-                                                <span>{format(new Date(req.start_date), 'MMM d')} - {format(new Date(req.end_date), 'MMM d, yyyy')}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-600">
-                                            {formatDuration(getDisplayDuration(req.duration_days, req.start_date, req.end_date))}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <Badge variant={getStatusVariant(req.status)}>
-                                                {req.status}
-                                            </Badge>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-600 max-w-xs truncate" title={req.reason}>
-                                            {req.reason}
-                                        </td>
-                                    </tr>
+                                    <React.Fragment key={req.id}>
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div>
+                                                    <p className="font-medium text-slate-900">{req.user?.first_name} {req.user?.last_name}</p>
+                                                    <p className="text-xs text-slate-500">{req.user?.email}</p>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 capitalize text-slate-700">
+                                                {req.leave_type}
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
+                                                <div className="flex flex-col">
+                                                    <span>{format(new Date(req.start_date), 'MMM d')} - {format(new Date(req.end_date), 'MMM d, yyyy')}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600">
+                                                {formatDuration(getDisplayDuration(req.duration_days, req.start_date, req.end_date))}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <Badge variant={getStatusVariant(req.status)}>
+                                                    {req.status}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600 max-w-xs truncate" title={req.reason}>
+                                                {req.reason}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 p-0 rounded-full bg-purple-50 text-purple-600 hover:bg-purple-100"
+                                                        onClick={() => setShowWorkflow(prev => ({ ...prev, [req.id]: !prev[req.id] }))}
+                                                        title="View Workflow"
+                                                    >
+                                                        <GitBranch className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {showWorkflow[req.id] && (
+                                            <tr className="bg-slate-50">
+                                                <td colSpan={7} className="px-6 py-3">
+                                                    <WorkflowStateDisplay
+                                                        requestId={req.id}
+                                                        currentStatus={req.status}
+                                                        onActionComplete={fetchRequests}
+                                                        showActions={req.status === 'pending'}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))
                             )}
                         </tbody>

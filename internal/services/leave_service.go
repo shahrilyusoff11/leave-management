@@ -18,6 +18,7 @@ type LeaveService struct {
 	auditLogger        *logger.AuditLogger
 	holidayService     *HolidayService
 	leaveTypeConfigSvc *LeaveTypeConfigService
+	workflowSvc        *WorkflowService
 }
 
 func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
@@ -28,7 +29,18 @@ func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
 		auditLogger:        auditLogger,
 		holidayService:     holidayService,
 		leaveTypeConfigSvc: leaveTypeConfigSvc,
+		workflowSvc:        NewWorkflowService(db),
 	}
+}
+
+// GetWorkflowService returns the workflow service for external access
+func (ls *LeaveService) GetWorkflowService() *WorkflowService {
+	return ls.workflowSvc
+}
+
+// GetDB returns the database connection for external service creation
+func (ls *LeaveService) GetDB() *gorm.DB {
+	return ls.db
 }
 
 func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.LeaveRequest) error {
@@ -86,6 +98,24 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 			request.EscalatedAt = &now
 		}
 
+		// Save request first
+		if err := tx.Create(request).Error; err != nil {
+			return err
+		}
+
+		// Initialize workflow state
+		workflowState, err := ls.workflowSvc.InitializeWorkflowState(request)
+		if err != nil {
+			// Log error but continue - workflow is optional
+			fmt.Printf("Warning: Could not initialize workflow: %v\n", err)
+		} else if workflowState != nil {
+			// Update request with workflow state ID
+			request.WorkflowStateID = &workflowState.ID
+			if err := tx.Save(request).Error; err != nil {
+				return err
+			}
+		}
+
 		// Create chronology entry
 		chronology := models.Chronology{
 			ID:             uuid.New(),
@@ -94,17 +124,13 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 			ActorID:        userID,
 			Comment:        "Leave application submitted",
 			Metadata: models.JSONMap{
-				"leave_type": request.LeaveType,
-				"start_date": request.StartDate.Format(time.RFC3339),
-				"end_date":   request.EndDate.Format(time.RFC3339),
-				"duration":   request.DurationDays,
+				"leave_type":      request.LeaveType,
+				"start_date":      request.StartDate.Format(time.RFC3339),
+				"end_date":        request.EndDate.Format(time.RFC3339),
+				"duration":        request.DurationDays,
+				"workflow_active": workflowState != nil,
 			},
 			CreatedAt: time.Now(),
-		}
-
-		// Save everything
-		if err := tx.Create(request).Error; err != nil {
-			return err
 		}
 
 		if err := tx.Create(&chronology).Error; err != nil {

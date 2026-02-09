@@ -1,0 +1,120 @@
+/* Workflow State Display Styles */
+.workflow-state-container {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 8px;
+}
+
+.workflow-state-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.workflow-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #6366f1;
+    letter-spacing: 0.05em;
+}
+
+.workflow-current-step {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.step-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.step-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.step-role {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.workflow-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.workflow-action-btn {
+    font-size: 0.75rem !important;
+    padding: 4px 12px !important;
+    height: auto !important;
+}
+
+.workflow-last-action {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(99, 102, 241, 0.15);
+    font-size: 0.8rem;
+}
+
+.action-label {
+    color: #64748b;
+}
+
+.action-value {
+    color: #1e293b;
+    font-weight: 500;
+}
+
+.workflow-state-loading {
+    text-align: center;
+    padding: 8px;
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
+/* Action Modal */
+.workflow-action-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.action-description {
+    color: #475569;
+    font-size: 0.9rem;
+}
+
+.action-comment-input {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    resize: vertical;
+}
+
+.action-comment-input:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.action-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}

@@ -67,6 +67,12 @@ func main() {
 		appLogger.Error("Failed to seed leave type configs", zap.Error(err))
 	}
 
+	// Seed default workflows if none exist
+	workflowService := services.NewWorkflowService(db.DB)
+	if err := workflowService.SeedDefaultWorkflows(); err != nil {
+		appLogger.Error("Failed to seed default workflows", zap.Error(err))
+	}
+
 	leaveCalculator := services.NewLeaveCalculator(holidayService, leaveTypeConfigService)
 	leaveService := services.NewLeaveService(db.DB, leaveCalculator, auditLogger, holidayService, leaveTypeConfigService)
 	userService := services.NewUserService(db.DB, auditLogger, leaveTypeConfigService, leaveCalculator)
@@ -82,7 +88,7 @@ func main() {
 	)
 
 	// Initialize cron jobs
-	cronJobs := cron.NewCronJobs(leaveService, emailService, appLogger)
+	cronJobs := cron.NewCronJobs(leaveService, emailService, workflowService, appLogger)
 	if err := cronJobs.Start(); err != nil {
 		appLogger.Error("Failed to start cron jobs", zap.Error(err))
 	}
@@ -143,6 +149,7 @@ func main() {
 		protected.GET("/leave-requests", leaveHandler.GetMyLeaveRequests)
 		protected.GET("/leave-requests/:id", leaveHandler.GetLeaveRequest)
 		protected.GET("/leave-requests/:id/chronology", leaveHandler.GetLeaveRequestChronology)
+		protected.GET("/leave-requests/:id/workflow-state", leaveHandler.GetWorkflowState)
 		protected.PUT("/leave-requests/:id/cancel", leaveHandler.CancelLeaveRequest)
 
 		protected.GET("/leave-balance", leaveHandler.GetLeaveBalance)
@@ -162,6 +169,8 @@ func main() {
 			manager.GET("/team/leave-requests", leaveHandler.GetTeamLeaveRequests)
 			manager.PUT("/leave-requests/:id/approve", leaveHandler.ApproveLeaveRequest)
 			manager.PUT("/leave-requests/:id/reject", leaveHandler.RejectLeaveRequest)
+			manager.POST("/leave-requests/:id/workflow-action", leaveHandler.PerformWorkflowAction)
+			manager.POST("/leave-requests/:id/convert", leaveHandler.ConvertLeaveType)
 		}
 
 		// HR routes
@@ -197,6 +206,14 @@ func main() {
 			admin.GET("/audit-logs", adminHandler.GetAuditLogs)
 			admin.GET("/leave-type-configs", adminHandler.GetLeaveTypeConfigs)
 			admin.PUT("/leave-type-configs/:type", adminHandler.UpdateLeaveTypeConfig)
+			// Workflow routes
+			admin.GET("/workflows", adminHandler.GetAllWorkflows)
+			admin.GET("/workflows/:type", adminHandler.GetWorkflow)
+			admin.PUT("/workflows/:type", adminHandler.UpdateWorkflow)
+			admin.POST("/workflows/:type/steps", adminHandler.CreateWorkflowStep)
+			admin.PUT("/workflows/:type/steps/:stepId", adminHandler.UpdateWorkflowStep)
+			admin.DELETE("/workflows/:type/steps/:stepId", adminHandler.DeleteWorkflowStep)
+			admin.PUT("/workflows/:type/reorder", adminHandler.ReorderWorkflowSteps)
 		}
 
 		// SysAdmin routes

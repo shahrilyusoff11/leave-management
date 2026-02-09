@@ -219,3 +219,194 @@ func (h *AdminHandler) UpdateLeaveTypeConfig(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Leave type configuration updated"})
 }
+
+// GetAllWorkflows returns all workflow configurations
+func (h *AdminHandler) GetAllWorkflows(c *gin.Context) {
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflows, err := workflowSvc.GetAllWorkflows()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, workflows)
+}
+
+// GetWorkflow returns workflow for a specific leave type
+func (h *AdminHandler) GetWorkflow(c *gin.Context) {
+	leaveType := models.LeaveType(c.Param("type"))
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+
+	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, workflow)
+}
+
+// UpdateWorkflow updates a workflow configuration
+func (h *AdminHandler) UpdateWorkflow(c *gin.Context) {
+	leaveType := models.LeaveType(c.Param("type"))
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+
+	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		return
+	}
+
+	var updates struct {
+		WorkflowName string `json:"workflow_name"`
+		Description  string `json:"description"`
+		IsActive     *bool  `json:"is_active"`
+	}
+	if err := c.ShouldBindJSON(&updates); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if updates.WorkflowName != "" {
+		workflow.WorkflowName = updates.WorkflowName
+	}
+	if updates.Description != "" {
+		workflow.Description = updates.Description
+	}
+	if updates.IsActive != nil {
+		workflow.IsActive = *updates.IsActive
+	}
+
+	if err := workflowSvc.UpdateWorkflow(workflow); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, workflow)
+}
+
+// CreateWorkflowStep adds a new step to a workflow
+func (h *AdminHandler) CreateWorkflowStep(c *gin.Context) {
+	leaveType := models.LeaveType(c.Param("type"))
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+
+	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		return
+	}
+
+	var step models.WorkflowStep
+	if err := c.ShouldBindJSON(&step); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	step.WorkflowID = workflow.ID
+	if err := workflowSvc.CreateWorkflowStep(&step); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, step)
+}
+
+// UpdateWorkflowStep updates an existing workflow step
+func (h *AdminHandler) UpdateWorkflowStep(c *gin.Context) {
+	stepID, err := uuid.Parse(c.Param("stepId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid step ID"})
+		return
+	}
+
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+
+	step, err := workflowSvc.GetWorkflowStep(stepID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Step not found"})
+		return
+	}
+
+	var updates models.WorkflowStep
+	if err := c.ShouldBindJSON(&updates); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Update fields
+	step.StepName = updates.StepName
+	step.StepLabel = updates.StepLabel
+	step.ResponsibleRole = updates.ResponsibleRole
+	step.ActionType = updates.ActionType
+	step.TimeoutDays = updates.TimeoutDays
+	step.TimeoutAction = updates.TimeoutAction
+	step.FallbackStepID = updates.FallbackStepID
+	step.NextStepOnApprove = updates.NextStepOnApprove
+	step.NextStepOnReject = updates.NextStepOnReject
+	step.NotifyRoles = updates.NotifyRoles
+	step.RequiresDocument = updates.RequiresDocument
+	step.DocumentType = updates.DocumentType
+	step.IsTerminal = updates.IsTerminal
+	step.TerminalStatus = updates.TerminalStatus
+	step.Conditions = updates.Conditions
+
+	if err := workflowSvc.UpdateWorkflowStep(step); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, step)
+}
+
+// DeleteWorkflowStep removes a step from a workflow
+func (h *AdminHandler) DeleteWorkflowStep(c *gin.Context) {
+	stepID, err := uuid.Parse(c.Param("stepId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid step ID"})
+		return
+	}
+
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	if err := workflowSvc.DeleteWorkflowStep(stepID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Step deleted"})
+}
+
+// ReorderWorkflowSteps updates the order of steps in a workflow
+func (h *AdminHandler) ReorderWorkflowSteps(c *gin.Context) {
+	leaveType := models.LeaveType(c.Param("type"))
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+
+	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
+		return
+	}
+
+	var stepOrders map[string]int
+	if err := c.ShouldBindJSON(&stepOrders); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Convert string UUIDs to uuid.UUID
+	orders := make(map[uuid.UUID]int)
+	for stepIDStr, order := range stepOrders {
+		stepID, err := uuid.Parse(stepIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid step ID: " + stepIDStr})
+			return
+		}
+		orders[stepID] = order
+	}
+
+	if err := workflowSvc.ReorderWorkflowSteps(workflow.ID, orders); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Steps reordered"})
+}
