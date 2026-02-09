@@ -17,6 +17,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [editingStep, setEditingStep] = useState<WorkflowStep | null>(null);
+    const [isNewStep, setIsNewStep] = useState(false);
     const [saving, setSaving] = useState(false);
 
     const fetchWorkflow = useCallback(async () => {
@@ -41,8 +42,35 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
             await api.put(`/admin/workflows/${leaveType}/steps/${step.id}`, step);
             await fetchWorkflow();
             setEditingStep(null);
+            setIsNewStep(false);
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to update step');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleAddStep = async (step: WorkflowStep) => {
+        setSaving(true);
+        try {
+            await api.post(`/admin/workflows/${leaveType}/steps`, {
+                step_name: step.step_name,
+                step_label: step.step_label,
+                step_order: (workflow?.steps?.length || 0) + 1,
+                responsible_role: step.responsible_role,
+                action_type: step.action_type,
+                timeout_days: step.timeout_days,
+                timeout_action: step.timeout_action,
+                requires_document: step.requires_document,
+                document_type: step.document_type,
+                is_terminal: step.is_terminal,
+                terminal_status: step.terminal_status,
+            });
+            await fetchWorkflow();
+            setEditingStep(null);
+            setIsNewStep(false);
+        } catch (err: any) {
+            setError(err.response?.data?.error || 'Failed to add step');
         } finally {
             setSaving(false);
         }
@@ -70,6 +98,26 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to update workflow');
         }
+    };
+
+    const createNewStep = () => {
+        const newStep: WorkflowStep = {
+            id: 'new',
+            workflow_id: workflow?.id || '',
+            step_order: (workflow?.steps?.length || 0) + 1,
+            step_name: `step_${(workflow?.steps?.length || 0) + 1}`,
+            step_label: 'New Step',
+            responsible_role: 'hod',
+            action_type: 'approve',
+            timeout_days: 7,
+            timeout_action: 'escalate',
+            requires_document: false,
+            is_terminal: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        };
+        setEditingStep(newStep);
+        setIsNewStep(true);
     };
 
     if (loading) {
@@ -122,7 +170,12 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
                 </div>
 
                 <div className="workflow-steps">
-                    <h3>Workflow Steps</h3>
+                    <div className="steps-header">
+                        <h3>Workflow Steps</h3>
+                        <button onClick={createNewStep} className="add-step-btn">
+                            + Add Step
+                        </button>
+                    </div>
                     <div className="steps-list">
                         {workflow.steps?.sort((a, b) => a.step_order - b.step_order).map((step, index) => (
                             <div key={step.id} className="step-card">
@@ -130,7 +183,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
                                     <span className="step-order">{index + 1}</span>
                                     <h4>{step.step_label || step.step_name}</h4>
                                     <div className="step-actions">
-                                        <button onClick={() => setEditingStep(step)} className="edit-btn">Edit</button>
+                                        <button onClick={() => { setEditingStep(step); setIsNewStep(false); }} className="edit-btn">Edit</button>
                                         <button onClick={() => handleDeleteStep(step.id)} className="delete-btn">Delete</button>
                                     </div>
                                 </div>
@@ -162,6 +215,11 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
                                 </div>
                             </div>
                         ))}
+                        {(!workflow.steps || workflow.steps.length === 0) && (
+                            <div className="no-steps">
+                                <p>No steps configured. Click "Add Step" to create a workflow step.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -169,9 +227,10 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
                     <StepEditor
                         step={editingStep}
                         allSteps={workflow.steps || []}
-                        onSave={handleStepUpdate}
-                        onCancel={() => setEditingStep(null)}
+                        onSave={isNewStep ? handleAddStep : handleStepUpdate}
+                        onCancel={() => { setEditingStep(null); setIsNewStep(false); }}
                         saving={saving}
+                        isNew={isNewStep}
                     />
                 )}
             </div>
@@ -185,9 +244,10 @@ interface StepEditorProps {
     onSave: (step: WorkflowStep) => void;
     onCancel: () => void;
     saving: boolean;
+    isNew?: boolean;
 }
 
-const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCancel, saving }) => {
+const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCancel, saving, isNew }) => {
     const [editedStep, setEditedStep] = useState<WorkflowStep>(step);
 
     const handleChange = (field: keyof WorkflowStep, value: any) => {
@@ -197,17 +257,27 @@ const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCance
     return (
         <div className="step-editor-overlay">
             <div className="step-editor-modal">
-                <h3>Edit Step: {step.step_label || step.step_name}</h3>
+                <h3>{isNew ? 'Add New Step' : `Edit Step: ${step.step_label || step.step_name}`}</h3>
 
                 <div className="form-group">
-                    <label>Step Label</label>
+                    <label>Step Name (internal)</label>
+                    <input
+                        type="text"
+                        value={editedStep.step_name}
+                        onChange={e => handleChange('step_name', e.target.value)}
+                        placeholder="e.g., hod_approval"
+                    />
+                </div>
+
+                <div className="form-group">
+                    <label>Step Label (display)</label>
                     <input
                         type="text"
                         value={editedStep.step_label}
                         onChange={e => handleChange('step_label', e.target.value)}
+                        placeholder="e.g., HOD Approval"
                     />
                 </div>
-
                 <div className="form-group">
                     <label>Responsible Role</label>
                     <select
@@ -335,7 +405,7 @@ const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCance
                 <div className="form-actions">
                     <button onClick={onCancel} disabled={saving} className="cancel-btn">Cancel</button>
                     <button onClick={() => onSave(editedStep)} disabled={saving} className="save-btn">
-                        {saving ? 'Saving...' : 'Save Changes'}
+                        {saving ? 'Saving...' : isNew ? 'Add Step' : 'Save Changes'}
                     </button>
                 </div>
             </div>
@@ -344,3 +414,4 @@ const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCance
 };
 
 export default WorkflowEditor;
+

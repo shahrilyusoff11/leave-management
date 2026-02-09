@@ -30,6 +30,7 @@
     opacity: 0;
     transform: translateY(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -133,7 +134,44 @@
 .workflow-steps h3 {
   color: #f8fafc;
   font-size: 1.1rem;
+  margin: 0;
+}
+
+.steps-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 16px;
+}
+
+.add-step-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-step-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+}
+
+.no-steps {
+  text-align: center;
+  padding: 40px;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.no-steps p {
+  margin: 0;
 }
 
 .steps-list {
@@ -187,7 +225,8 @@
   gap: 8px;
 }
 
-.edit-btn, .delete-btn {
+.edit-btn,
+.delete-btn {
   padding: 6px 12px;
   border-radius: 5px;
   font-size: 0.8rem;
@@ -346,7 +385,8 @@
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.cancel-btn, .save-btn {
+.cancel-btn,
+.save-btn {
   padding: 10px 20px;
   border-radius: 6px;
   font-size: 0.9rem;
