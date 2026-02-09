@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"leave-management-system/internal/models"
 	"leave-management-system/internal/services"
 	"net/http"
@@ -212,10 +213,68 @@ func (h *AdminHandler) UpdateLeaveTypeConfig(c *gin.Context) {
 		return
 	}
 
+	// 1. Fetch Before State
+	beforeConfig, err := h.leaveTypeConfigService.GetConfig(leaveType)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Leave type config not found"})
+		return
+	}
+
+	// 2. Perform Update
 	if err := h.leaveTypeConfigService.UpdateConfig(leaveType, updates); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// 3. Fetch After State
+	afterConfig, err := h.leaveTypeConfigService.GetConfig(leaveType)
+	if err != nil {
+		// This shouldn't happen if update succeeded, but handle gracefully
+		c.JSON(http.StatusOK, gin.H{"message": "Leave type configuration updated, but failed to fetch new state"})
+		return
+	}
+
+	// 4. Audit Log (Fire and Forget)
+	go func(before, after *models.LeaveTypeConfig, ctx *gin.Context) {
+		// Extract user info from context (needs to be passed or extracted safely)
+		// Note: passing *gin.Context to goroutine is unsafe. We should extract values first.
+		uidVal, _ := ctx.Get("user_id")
+		emailVal, _ := ctx.Get("user_email")
+		roleVal, _ := ctx.Get("user_role")
+
+		uid, _ := uidVal.(uuid.UUID)
+		email, _ := emailVal.(string)
+		role, _ := roleVal.(models.UserRole)
+
+		// Helper to convert struct to map
+		toMap := func(v interface{}) models.JSONMap {
+			b, _ := json.Marshal(v)
+			var m models.JSONMap
+			json.Unmarshal(b, &m)
+			return m
+		}
+
+		auditLog := &models.AuditLog{
+			ID:          uuid.New(),
+			ActorID:     uid,
+			ActorEmail:  email,
+			ActorRole:   role,
+			Action:      "update_leave_type_config",
+			TargetID:    before.ID,
+			TargetType:  "leave_type_config",
+			BeforeState: toMap(before),
+			AfterState:  toMap(after),
+			Method:      "PUT",
+			Endpoint:    ctx.Request.URL.Path,
+			IPAddress:   ctx.ClientIP(),
+			UserAgent:   ctx.Request.UserAgent(),
+			CreatedAt:   time.Now(),
+		}
+		h.auditService.CreateAuditLog(auditLog)
+	}(beforeConfig, afterConfig, c.Copy()) // Use c.Copy() for goroutine safety
+
+	// Prevent duplicate logging in middleware
+	c.Set("audit_logged", true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Leave type configuration updated"})
 }

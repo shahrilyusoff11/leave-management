@@ -81,22 +81,28 @@ func (m *AuditMiddleware) AuditLog() gin.HandlerFunc {
 			blw.body.String(),
 		)
 
-		// Save audit log to database (only for authenticated requests)
-		if uid != uuid.Nil && m.auditService != nil {
-			auditLog := &models.AuditLog{
-				ID:         uuid.New(),
-				ActorID:    uid,
-				ActorEmail: email,
-				ActorRole:  role,
-				Action:     c.Request.Method + " " + c.Request.URL.Path,
-				Method:     c.Request.Method,
-				Endpoint:   c.Request.URL.Path,
-				IPAddress:  c.ClientIP(),
-				UserAgent:  c.Request.UserAgent(),
-				CreatedAt:  time.Now(),
+		// Save audit log to database (only for authenticated requests AND state-changing methods)
+		// AND if not already logged by handler (deduplication)
+		alreadyLogged, _ := c.Get("audit_logged")
+		if uid != uuid.Nil && m.auditService != nil && alreadyLogged == nil {
+			method := c.Request.Method
+			// Only log state-changing methods to DB to reduce noise
+			if method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH" {
+				auditLog := &models.AuditLog{
+					ID:         uuid.New(),
+					ActorID:    uid,
+					ActorEmail: email,
+					ActorRole:  role,
+					Action:     method + " " + c.Request.URL.Path,
+					Method:     method,
+					Endpoint:   c.Request.URL.Path,
+					IPAddress:  c.ClientIP(),
+					UserAgent:  c.Request.UserAgent(),
+					CreatedAt:  time.Now(),
+				}
+				// Fire and forget - don't block request on audit log save
+				go m.auditService.CreateAuditLog(auditLog)
 			}
-			// Fire and forget - don't block request on audit log save
-			go m.auditService.CreateAuditLog(auditLog)
 		}
 	}
 }

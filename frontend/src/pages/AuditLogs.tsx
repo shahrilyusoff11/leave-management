@@ -15,18 +15,118 @@ interface AuditLog {
     actor_role: string;
     created_at: string;
     ip_address: string;
+    target_type?: string;
+    target_id?: string;
+    before_state?: Record<string, any>;
+    after_state?: Record<string, any>;
 }
+
+const AuditLogDetailsModal: React.FC<{
+    log: AuditLog | null;
+    isOpen: boolean;
+    onClose: () => void;
+}> = ({ log, isOpen, onClose }) => {
+    if (!isOpen || !log) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                <div className="p-6 border-b border-slate-200 flex justify-between items-center">
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-900">Audit Log Details</h2>
+                        <p className="text-sm text-slate-500 mt-1">
+                            {format(new Date(log.created_at), 'PPP pp')}
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                        <span className="sr-only">Close</span>
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Actor</span>
+                            <div className="flex items-center gap-2">
+                                <span className="font-medium text-slate-900">{log.actor_email}</span>
+                                <Badge variant="secondary">{log.actor_role}</Badge>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Action</span>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="font-mono">{log.method}</Badge>
+                                <span className="font-mono text-sm text-slate-600">{log.endpoint}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {(log.before_state || log.after_state) ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                                    Before Change
+                                </h3>
+                                <div className="bg-slate-50 rounded-md p-4 border border-slate-200 overflow-x-auto">
+                                    {log.before_state ? (
+                                        <pre className="text-xs font-mono text-slate-700">
+                                            {JSON.stringify(log.before_state, null, 2)}
+                                        </pre>
+                                    ) : (
+                                        <span className="text-sm text-slate-400 italic">No previous state recorded</span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                                    After Change
+                                </h3>
+                                <div className="bg-slate-50 rounded-md p-4 border border-slate-200 overflow-x-auto">
+                                    {log.after_state ? (
+                                        <pre className="text-xs font-mono text-slate-700">
+                                            {JSON.stringify(log.after_state, null, 2)}
+                                        </pre>
+                                    ) : (
+                                        <span className="text-sm text-slate-400 italic">No new state recorded</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-slate-50 rounded-lg p-8 text-center border border-dashed border-slate-300">
+                            <p className="text-slate-500">No detailed state changes were captured for this event.</p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-6 border-t border-slate-200 bg-slate-50 rounded-b-lg">
+                    <button
+                        onClick={onClose}
+                        className="w-full sm:w-auto px-4 py-2 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        Close Details
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const AuditLogs: React.FC = () => {
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
     const fetchLogs = async () => {
         setLoading(true);
         try {
             const response = await api.get('/admin/audit-logs');
-            // Handle response format: { logs: [], total, page, limit }
             if (response.data && response.data.logs) {
                 setLogs(response.data.logs);
             } else if (Array.isArray(response.data)) {
@@ -91,18 +191,19 @@ const AuditLogs: React.FC = () => {
                                 <th className="px-6 py-4 font-semibold text-slate-600">Role</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Action</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">IP Address</th>
+                                <th className="px-6 py-4 font-semibold text-slate-600 text-right">Details</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         Loading logs...
                                     </td>
                                 </tr>
                             ) : filteredLogs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         No logs found. Try performing some actions first (navigate around, submit leave, etc.)
                                     </td>
                                 </tr>
@@ -135,6 +236,14 @@ const AuditLogs: React.FC = () => {
                                         <td className="px-6 py-4 text-slate-500 font-mono">
                                             {log.ip_address || '-'}
                                         </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button
+                                                onClick={() => setSelectedLog(log)}
+                                                className="text-indigo-600 hover:text-indigo-900 font-medium"
+                                            >
+                                                View
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))
                             )}
@@ -142,6 +251,12 @@ const AuditLogs: React.FC = () => {
                     </table>
                 </div>
             </Card>
+
+            <AuditLogDetailsModal
+                log={selectedLog}
+                isOpen={!!selectedLog}
+                onClose={() => setSelectedLog(null)}
+            />
         </div>
     );
 };

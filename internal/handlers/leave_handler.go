@@ -285,9 +285,10 @@ func (h *LeaveHandler) updateLeaveRequestFromWorkflow(requestID uuid.UUID, state
 
 	request.Status = state.FinalStatus
 	now := time.Now()
-	if state.FinalStatus == models.StatusApproved {
+	switch state.FinalStatus {
+	case models.StatusApproved:
 		request.ApprovedAt = &now
-	} else if state.FinalStatus == models.StatusRejected {
+	case models.StatusRejected:
 		request.RejectedAt = &now
 	}
 

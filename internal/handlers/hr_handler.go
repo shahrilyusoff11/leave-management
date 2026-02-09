@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"leave-management-system/internal/models"
 	"leave-management-system/internal/services"
 	"net/http"
@@ -14,12 +15,14 @@ import (
 type HRHandler struct {
 	userService  *services.UserService
 	leaveService *services.LeaveService
+	auditService *services.AuditService
 }
 
-func NewHRHandler(userService *services.UserService, leaveService *services.LeaveService) *HRHandler {
+func NewHRHandler(userService *services.UserService, leaveService *services.LeaveService, auditService *services.AuditService) *HRHandler {
 	return &HRHandler{
 		userService:  userService,
 		leaveService: leaveService,
+		auditService: auditService,
 	}
 }
 
@@ -115,6 +118,46 @@ func (h *HRHandler) CreateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Audit Log (Fire and Forget)
+	go func(newUser models.User, ctx *gin.Context) {
+		uidVal, _ := ctx.Get("user_id")
+		emailVal, _ := ctx.Get("user_email")
+		roleVal, _ := ctx.Get("user_role")
+
+		uid, _ := uidVal.(uuid.UUID)
+		email, _ := emailVal.(string)
+		role, _ := roleVal.(models.UserRole)
+
+		// Helper to convert struct to map
+		toMap := func(v interface{}) models.JSONMap {
+			b, _ := json.Marshal(v)
+			var m models.JSONMap
+			json.Unmarshal(b, &m)
+			return m
+		}
+
+		auditLog := &models.AuditLog{
+			ID:          uuid.New(),
+			ActorID:     uid,
+			ActorEmail:  email,
+			ActorRole:   role,
+			Action:      "create_user",
+			TargetID:    newUser.ID,
+			TargetType:  "user",
+			BeforeState: nil, // New creation
+			AfterState:  toMap(newUser),
+			Method:      "POST",
+			Endpoint:    ctx.Request.URL.Path,
+			IPAddress:   ctx.ClientIP(),
+			UserAgent:   ctx.Request.UserAgent(),
+			CreatedAt:   time.Now(),
+		}
+		h.auditService.CreateAuditLog(auditLog)
+	}(newUser, c.Copy())
+
+	// Prevent duplicate logging in middleware
+	c.Set("audit_logged", true)
 
 	c.JSON(http.StatusCreated, newUser)
 }

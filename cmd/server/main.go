@@ -97,7 +97,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(userService, jwtManager)
 	leaveHandler := handlers.NewLeaveHandler(leaveService)
-	hrHandler := handlers.NewHRHandler(userService, leaveService)
+	hrHandler := handlers.NewHRHandler(userService, leaveService, auditService)
 
 	adminHandler := handlers.NewAdminHandler(holidayService, configService, leaveService, auditService, leaveTypeConfigService)
 	uploadHandler := handlers.NewUploadHandler()
