@@ -183,12 +183,71 @@ func (h *HRHandler) UpdateLeaveBalance(c *gin.Context) {
 		return
 	}
 
+	// 1. Get Before State (We need to fetch the balance first)
+	// Note: The service UpdateLeaveBalance method does the update directly.
+	// To log "Before" state, we should ideally fetch it first.
+	// However, `UpdateLeaveBalance` service might not expose a simple "Get" compatible with the update logic easily without duplicating logic.
+	// Let's rely on the `balance` returned which is the "After" state, and we can infer "Before" if needed,
+	// OR better: construct a meaningful log with the *Request Parameters* which explain the change.
+
+	// Actually, for financial/balance logs, the "Action" (Adjustment) is often more important than the state snapshot.
+	// We will log the *Intent* (Request) and the *Result* (New Balance).
+
 	balance, err := h.leaveService.UpdateLeaveBalance(userID, req.LeaveType, req.Year,
 		req.TotalEntitlement, req.Adjustment, req.Reason)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Audit Log (Fire and Forget)
+	go func(req UpdateLeaveBalanceRequest, result *models.LeaveBalance, targetUserID uuid.UUID, ctx *gin.Context) {
+		uidVal, _ := ctx.Get("user_id")
+		emailVal, _ := ctx.Get("user_email")
+		roleVal, _ := ctx.Get("user_role")
+
+		uid, _ := uidVal.(uuid.UUID)
+		email, _ := emailVal.(string)
+		role, _ := roleVal.(models.UserRole)
+
+		// Helper to convert struct to map
+		toMap := func(v interface{}) models.JSONMap {
+			b, _ := json.Marshal(v)
+			var m models.JSONMap
+			json.Unmarshal(b, &m)
+			return m
+		}
+
+		// Construct "Before" state representation (The Request)
+		changeDetails := map[string]interface{}{
+			"adjustment":        req.Adjustment,
+			"total_entitlement": req.TotalEntitlement,
+			"reason":            req.Reason,
+			"year":              req.Year,
+			"leave_type":        req.LeaveType,
+		}
+
+		auditLog := &models.AuditLog{
+			ID:          uuid.New(),
+			ActorID:     uid,
+			ActorEmail:  email,
+			ActorRole:   role,
+			Action:      "update_leave_balance",
+			TargetID:    targetUserID,
+			TargetType:  "user_leave_balance",
+			BeforeState: toMap(changeDetails), // Tracking the *Input/Change* here for clarity
+			AfterState:  toMap(result),        // Tracking the *Resulting Balance*
+			Method:      "PUT",
+			Endpoint:    ctx.Request.URL.Path,
+			IPAddress:   ctx.ClientIP(),
+			UserAgent:   ctx.Request.UserAgent(),
+			CreatedAt:   time.Now(),
+		}
+		h.auditService.CreateAuditLog(auditLog)
+	}(req, balance, userID, c.Copy())
+
+	// Prevent duplicate logging in middleware
+	c.Set("audit_logged", true)
 
 	c.JSON(http.StatusOK, balance)
 }
