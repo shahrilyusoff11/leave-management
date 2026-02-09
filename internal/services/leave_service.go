@@ -278,53 +278,81 @@ func (ls *LeaveService) calculateDefaultEntitlementForNextYear(userID uuid.UUID,
 }
 
 // Handle year-end carry forward
+// Handle year-end carry forward
 func (ls *LeaveService) ProcessYearEndCarryForward() error {
 	return ls.db.Transaction(func(tx *gorm.DB) error {
-		// Get all annual leave balances for current year
-		currentYear := time.Now().Year()
-		var balances []models.LeaveBalance
-
-		err := tx.Where("year = ? AND leave_type = ?", currentYear, models.LeaveTypeAnnual).
-			Find(&balances).Error
-
+		// Get all active leave types that allow carry forward
+		configs, err := ls.leaveTypeConfigSvc.GetAllConfigs()
 		if err != nil {
 			return err
 		}
 
-		for _, balance := range balances {
-			// Calculate unused leave (considering adjustments)
-			available := balance.TotalEntitlement + balance.Adjusted - balance.Used
-			if available > 0 {
-				// Carry forward up to max limit (configurable)
-				maxCarryForward := 5.0 // Default fallback
+		currentYear := time.Now().Year()
 
-				// Get config for annual leave
-				config, err := ls.leaveTypeConfigSvc.GetConfig(models.LeaveTypeAnnual)
-				if err == nil && config.AllowCarryForward {
-					maxCarryForward = float64(config.MaxCarryForwardDays)
-				} else if err == nil && !config.AllowCarryForward {
-					maxCarryForward = 0
-				}
+		for _, config := range configs {
+			if !config.IsActive || !config.AllowCarryForward {
+				continue
+			}
 
-				carryForward := available
-				if carryForward > maxCarryForward {
-					carryForward = maxCarryForward
-				}
+			// Get all balances for this leave type for current year
+			var balances []models.LeaveBalance
+			err := tx.Where("year = ? AND leave_type = ?", currentYear, config.LeaveType).
+				Find(&balances).Error
 
-				// Create next year's balance with carried forward amount
-				nextYearBalance := models.LeaveBalance{
-					ID:               uuid.New(),
-					UserID:           balance.UserID,
-					LeaveType:        models.LeaveTypeAnnual,
-					Year:             currentYear + 1,
-					TotalEntitlement: ls.calculateDefaultEntitlementForNextYear(balance.UserID, currentYear+1),
-					CarriedForward:   carryForward,
-					CreatedAt:        time.Now(),
-					UpdatedAt:        time.Now(),
-				}
+			if err != nil {
+				return err
+			}
 
-				if err := tx.Create(&nextYearBalance).Error; err != nil {
-					return err
+			for _, balance := range balances {
+				// Calculate unused leave (considering adjustments)
+				available := balance.TotalEntitlement + balance.Adjusted - balance.Used
+				if available > 0 {
+					// Use config max carry forward
+					maxCarryForward := float64(config.MaxCarryForwardDays)
+
+					carryForward := available
+					if carryForward > maxCarryForward {
+						carryForward = maxCarryForward
+					}
+
+					// Check if next year's balance already exists
+					var nextYearBalance models.LeaveBalance
+					err := tx.Where("user_id = ? AND year = ? AND leave_type = ?",
+						balance.UserID, currentYear+1, config.LeaveType).First(&nextYearBalance).Error
+
+					if err == nil {
+						// Update existing balance
+						nextYearBalance.CarriedForward = carryForward
+						nextYearBalance.UpdatedAt = time.Now()
+						if err := tx.Save(&nextYearBalance).Error; err != nil {
+							return err
+						}
+					} else if errors.Is(err, gorm.ErrRecordNotFound) {
+						// Create next year's balance with carried forward amount
+						nextYearBalance = models.LeaveBalance{
+							ID:               uuid.New(),
+							UserID:           balance.UserID,
+							LeaveType:        config.LeaveType,
+							Year:             currentYear + 1,
+							TotalEntitlement: ls.calculateDefaultEntitlementForNextYear(balance.UserID, currentYear+1), // This method might default to Annual, need check
+							CarriedForward:   carryForward,
+							CreatedAt:        time.Now(),
+							UpdatedAt:        time.Now(),
+						}
+
+						// Fix: calculateDefaultEntitlementForNextYear currently defaults to Annual.
+						// We need to call calculateDefaultEntitlement with specific leave type
+						var u models.User
+						if err := tx.First(&u, "id = ?", balance.UserID).Error; err == nil {
+							nextYearBalance.TotalEntitlement = ls.calculateDefaultEntitlement(&u, currentYear+1, config.LeaveType)
+						}
+
+						if err := tx.Create(&nextYearBalance).Error; err != nil {
+							return err
+						}
+					} else {
+						return err
+					}
 				}
 			}
 		}

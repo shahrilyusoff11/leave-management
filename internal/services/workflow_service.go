@@ -409,7 +409,7 @@ func (s *WorkflowService) ReorderWorkflowSteps(workflowID uuid.UUID, stepOrders 
 
 // EvaluateConditions checks if step conditions are met
 func (s *WorkflowService) EvaluateConditions(step *models.WorkflowStep, request *models.LeaveRequest) (bool, string) {
-	if step.Conditions == nil || len(step.Conditions) == 0 {
+	if len(step.Conditions) == 0 {
 		return true, ""
 	}
 

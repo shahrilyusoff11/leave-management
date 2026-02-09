@@ -230,6 +230,25 @@ func (lc *LeaveCalculator) ValidateLeaveRequest(user *models.User, request *mode
 		if config.RequiresAttachment && request.AttachmentURL == "" {
 			return fmt.Errorf("attachment is required for %s", request.LeaveType)
 		}
+
+		// Check minimum advance days
+		if config.MinAdvanceDays > 0 {
+			// Calculate days in advance
+			// We use start of days for comparison
+			today := time.Now()
+			startDate := request.StartDate
+
+			// Reset times to midnight for accurate day calculation
+			today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
+			startDate = time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
+
+			daysInAdvance := startDate.Sub(today).Hours() / 24
+
+			if daysInAdvance < float64(config.MinAdvanceDays) {
+				return fmt.Errorf("%s requires application at least %d days in advance (applied %.0f days in advance)",
+					request.LeaveType, config.MinAdvanceDays, daysInAdvance)
+			}
+		}
 	}
 
 	// Check if applying for past dates (emergency leave exception)
