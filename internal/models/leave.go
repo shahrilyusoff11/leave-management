@@ -54,10 +54,11 @@ type LeaveRequest struct {
 	UnrecordedLeaveSubtype string       `json:"unrecorded_leave_subtype"` // For marriage, compassionate, hajj
 	ChronologyEntries      []Chronology `gorm:"foreignKey:LeaveRequestID" json:"chronology_entries,omitempty"`
 	// Workflow fields
-	WorkflowStateID *uuid.UUID `json:"workflow_state_id"`
-	ConvertedFrom   *LeaveType `gorm:"type:varchar(20)" json:"converted_from"` // Track AL→EL or EL→Unpaid conversions
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	WorkflowStateID *uuid.UUID                 `json:"workflow_state_id"`
+	WorkflowState   *LeaveRequestWorkflowState `gorm:"foreignKey:WorkflowStateID" json:"workflow_state,omitempty"`
+	ConvertedFrom   *LeaveType                 `gorm:"type:varchar(20)" json:"converted_from"` // Track AL→EL or EL→Unpaid conversions
+	CreatedAt       time.Time                  `json:"created_at"`
+	UpdatedAt       time.Time                  `json:"updated_at"`
 }
 
 type LeaveBalance struct {

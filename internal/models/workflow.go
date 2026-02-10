@@ -103,6 +103,7 @@ const (
 	StepActionConvertedToEL  WorkflowStepAction = "converted_to_el"
 	StepActionConvertedToUL  WorkflowStepAction = "converted_to_unpaid"
 	StepActionTimeoutApplied WorkflowStepAction = "timeout_applied"
+	StepActionCancelled      WorkflowStepAction = "cancelled"
 )
 
 // LeaveRequestWorkflowState tracks current workflow position for a request

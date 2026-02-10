@@ -12,8 +12,10 @@ import { getDisplayDuration, formatDuration } from '../utils/duration';
 import LeaveHistoryModal from '../components/LeaveHistoryModal';
 import WorkflowStateDisplay from '../components/WorkflowStateDisplay';
 import { useToast } from '../components/ui/Toast';
+import { useAuth } from '../context/AuthContext';
 
 const TeamLeaves: React.FC = () => {
+    const { user } = useAuth();
     const { showToast } = useToast();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
@@ -114,6 +116,25 @@ const TeamLeaves: React.FC = () => {
             case 'cancelled': return 'secondary';
             default: return 'default';
         }
+    };
+
+    // Helper to check if current user can approve/reject
+    const canActionRequest = (req: LeaveRequest) => {
+        if (req.status !== 'pending') return false;
+
+        // If workflow state is present, enforce strict role check
+        if (req.workflow_state?.current_step) {
+            const requiredRole = req.workflow_state.current_step.responsible_role;
+            // SysAdmin can always override (matching backend logic)
+            if (user?.role === 'sysadmin') return true;
+            return user?.role === requiredRole;
+        }
+
+        // Fallback: If no workflow state (should not happen for new requests but possible for legacy),
+        // we allow sysadmin to fix it, or if backend allows, maybe manager?
+        // But to be safe and match strict backend, only SysAdmin or maybe explicit Manager role.
+        // Let's stick to SysAdmin as fallback safe guard.
+        return user?.role === 'sysadmin';
     };
 
     const filteredRequests = requests.filter(req => {
@@ -228,6 +249,11 @@ const TeamLeaves: React.FC = () => {
                                                     <Badge variant={getStatusVariant(req.status)}>
                                                         {req.status}
                                                     </Badge>
+                                                    {req.status === 'pending' && req.workflow_state?.current_step && (
+                                                        <span className="text-[10px] uppercase tracking-wide font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                            Waiting: {req.workflow_state.current_step.responsible_role}
+                                                        </span>
+                                                    )}
                                                     {req.status === 'rejected' && req.rejection_reason && (
                                                         <span className="text-xs text-red-600 italic max-w-[150px] truncate" title={req.rejection_reason}>
                                                             "{req.rejection_reason}"
@@ -254,7 +280,7 @@ const TeamLeaves: React.FC = () => {
                                                     >
                                                         <History className="h-4 w-4" />
                                                     </Button>
-                                                    {req.status === 'pending' && (
+                                                    {canActionRequest(req) && (
                                                         <>
                                                             <Button
                                                                 size="sm"
@@ -262,6 +288,7 @@ const TeamLeaves: React.FC = () => {
                                                                 variant="ghost"
                                                                 onClick={() => initiateApprove(req.id)}
                                                                 isLoading={processingId === req.id}
+                                                                title="Approve"
                                                             >
                                                                 <Check className="h-4 w-4" />
                                                             </Button>
@@ -271,6 +298,7 @@ const TeamLeaves: React.FC = () => {
                                                                 variant="ghost"
                                                                 onClick={() => openRejectModal(req.id)}
                                                                 isLoading={processingId === req.id}
+                                                                title="Reject"
                                                             >
                                                                 <X className="h-4 w-4" />
                                                             </Button>
@@ -286,7 +314,7 @@ const TeamLeaves: React.FC = () => {
                                                         requestId={req.id}
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
-                                                        showActions={req.status === 'pending'}
+                                                        showActions={req.status === 'pending' && canActionRequest(req)}
                                                     />
                                                 </td>
                                             </tr>

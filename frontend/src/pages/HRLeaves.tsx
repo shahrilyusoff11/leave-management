@@ -9,8 +9,10 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { getDisplayDuration, formatDuration } from '../utils/duration';
 import WorkflowStateDisplay from '../components/WorkflowStateDisplay';
+import { useAuth } from '../context/AuthContext';
 
 const HRLeaves: React.FC = () => {
+    const { user } = useAuth();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('all');
@@ -55,6 +57,27 @@ const HRLeaves: React.FC = () => {
             case 'cancelled': return 'secondary';
             default: return 'default';
         }
+    };
+
+    // Helper to check if current user can approve/reject
+    const canActionRequest = (req: LeaveRequest) => {
+        if (req.status !== 'pending') return false;
+
+        // If workflow state is present, enforce strict role check
+        if (req.workflow_state?.current_step) {
+            const requiredRole = req.workflow_state.current_step.responsible_role;
+            // SysAdmin can always override (matching backend logic)
+            if (user?.role === 'sysadmin') return true;
+            return user?.role === requiredRole;
+        }
+
+        // Fallback: If no workflow state, allow SysAdmin/HR? (HR usually can act on HRLeaves page, but strict workflow says no)
+        // Let's stick to strict compliance for consistency, or maybe allow HR if role matches?
+        // HRLeaves page is for HR users.
+        // If workflow step is "HR Verification", responsible_role='hr'. So user.role === 'hr' works.
+        // If workflow step is "Manager Approval", HR CANNOT approve (unless SysAdmin).
+        // So this logic works perfectly.
+        return user?.role === 'sysadmin';
     };
 
     return (
@@ -162,6 +185,13 @@ const HRLeaves: React.FC = () => {
                                                 <Badge variant={getStatusVariant(req.status)}>
                                                     {req.status}
                                                 </Badge>
+                                                {req.status === 'pending' && req.workflow_state?.current_step && (
+                                                    <div className="mt-1">
+                                                        <span className="text-[10px] uppercase tracking-wide font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                            Waiting: {req.workflow_state.current_step.responsible_role}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4 text-slate-600 max-w-xs truncate" title={req.reason}>
                                                 {req.reason}
@@ -187,7 +217,7 @@ const HRLeaves: React.FC = () => {
                                                         requestId={req.id}
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
-                                                        showActions={req.status === 'pending'}
+                                                        showActions={req.status === 'pending' && canActionRequest(req)}
                                                     />
                                                 </td>
                                             </tr>

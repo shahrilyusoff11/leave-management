@@ -185,6 +185,11 @@ const MyLeaves: React.FC = () => {
                                                     <Badge variant={getStatusVariant(req.status)}>
                                                         {req.status}
                                                     </Badge>
+                                                    {req.status === 'pending' && req.workflow_state?.current_step && (
+                                                        <span className="text-[10px] uppercase tracking-wide font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                            Waiting: {req.workflow_state.current_step.responsible_role}
+                                                        </span>
+                                                    )}
                                                     {req.status === 'rejected' && req.rejection_reason && (
                                                         <span className="text-xs text-red-600 italic max-w-[150px] truncate" title={req.rejection_reason}>
                                                             "{req.rejection_reason}"

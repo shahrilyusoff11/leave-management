@@ -32,6 +32,7 @@ export interface LeaveRequest {
     approver_id?: string;
     rejection_reason?: string;
     created_at: string;
+    workflow_state?: LeaveRequestWorkflowState;
 }
 
 export interface LeaveBalance {

@@ -114,10 +114,67 @@ func (s *WorkflowService) ProcessAction(
 	actorID uuid.UUID,
 	comment string,
 ) (*models.LeaveRequestWorkflowState, error) {
-	return s.processActionWithTx(s.db, leaveRequestID, action, actorID, comment)
+	var state *models.LeaveRequestWorkflowState
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		state, err = s.ProcessActionWithTx(tx, leaveRequestID, action, actorID, comment)
+		return err
+	})
+	return state, err
 }
 
-func (s *WorkflowService) processActionWithTx(
+// CancelWorkflow terminates a workflow process
+func (s *WorkflowService) CancelWorkflow(leaveRequestID uuid.UUID, actorID uuid.UUID, reason string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		return s.CancelWorkflowWithTx(tx, leaveRequestID, actorID, reason)
+	})
+}
+
+// CancelWorkflowWithTx terminates a workflow process within an existing transaction
+func (s *WorkflowService) CancelWorkflowWithTx(tx *gorm.DB, leaveRequestID uuid.UUID, actorID uuid.UUID, reason string) error {
+	// Get current state
+	var state models.LeaveRequestWorkflowState
+	if err := tx.Preload("CurrentStep").Where("leave_request_id = ?", leaveRequestID).First(&state).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil // No workflow to cancel
+		}
+		return fmt.Errorf("workflow state not found: %w", err)
+	}
+
+	if state.IsComplete {
+		return errors.New("workflow is already complete")
+	}
+
+	// Record action
+	state.ActionTaken = models.StepActionCancelled
+	state.ActionBy = &actorID
+	state.ActionComment = reason
+
+	// Add to step history if current step exists
+	if state.CurrentStep != nil {
+		historyEntry := map[string]interface{}{
+			"step_id":   state.CurrentStep.ID.String(),
+			"step_name": state.CurrentStep.StepName,
+			"action":    "cancelled",
+			"actor_id":  actorID.String(),
+			"comment":   reason,
+			"completed": time.Now().Format(time.RFC3339),
+		}
+		s.addToStepHistory(&state, historyEntry)
+	}
+
+	// Update state to complete
+	state.IsComplete = true
+	now := time.Now()
+	state.CompletedAt = &now
+	state.FinalStatus = models.StatusCancelled
+	state.CurrentStepID = nil
+	state.UpdatedAt = time.Now()
+
+	return tx.Save(&state).Error
+}
+
+func (s *WorkflowService) ProcessActionWithTx(
 	tx *gorm.DB,
 	leaveRequestID uuid.UUID,
 	action models.WorkflowStepAction,

@@ -152,76 +152,106 @@ func (ls *LeaveService) ApproveLeave(requestID, approverID uuid.UUID, comment st
 			return errors.New("leave request is not pending")
 		}
 
-		// Check if approver is the manager
-		if request.ApproverID != nil && *request.ApproverID != approverID {
-			// Allow HR to approve escalated requests?
-			// For now, strict check, but assuming logic allows manager
+		// Get Approver details to check role
+		var approver models.User
+		if err := tx.First(&approver, "id = ?", approverID).Error; err != nil {
+			return err
 		}
 
-		// Update request
-		now := time.Now()
-		request.Status = models.StatusApproved
-		request.ApprovedAt = &now
-		request.UpdatedAt = now
+		// Check if there is an active workflow state
+		var workflowState models.LeaveRequestWorkflowState
+		hasWorkflow := false
+		if err := tx.Preload("CurrentStep").Where("leave_request_id = ?", requestID).First(&workflowState).Error; err == nil {
+			hasWorkflow = true
+		}
 
-		// Deduct balance if applicable
-		if request.LeaveType == models.LeaveTypeAnnual ||
-			request.LeaveType == models.LeaveTypeEmergency ||
-			request.LeaveType == models.LeaveTypeSick {
+		if hasWorkflow && workflowState.CurrentStep != nil {
+			// Workflow-based approval
 
-			// Recalculate duration if it's 0 (legacy records)
-			durationToDeduct := request.DurationDays
-			if durationToDeduct <= 0 {
-				// Recalculate working days
-				calculatedDays, err := ls.calculator.CalculateWorkingDays(request.StartDate, request.EndDate, request.LeaveType)
-				if err == nil && calculatedDays > 0 {
-					durationToDeduct = calculatedDays
-					// Also update the request record
-					request.DurationDays = durationToDeduct
-				} else {
-					// Fallback: at least 1 day for same-day leave
-					durationToDeduct = 1
-					request.DurationDays = 1
+			// 1. Check Authorization (Role-based)
+			// Manager can always approve if they are the direct manager AND the step allows managers?
+			// Or should we strictly follow the step's ResponsibleRole?
+			// The user issue is "HOD approval but it goes to manager".
+			// If we enforce ResponsibleRole, then Manager won't be able to approve HOD steps unless they are HOD.
+
+			// Strict check: Approver must have the ResponsibleRole
+			// UNLESS the step explicitly notifies/allows manager (which we don't have a field for "allows", only "notify")
+			// For now, let's enforce based on the workflow configuration.
+			if approver.Role != workflowState.CurrentStep.ResponsibleRole {
+				// Special case: SysAdmin can override? Maybe.
+				if approver.Role != models.RoleSysAdmin {
+					return fmt.Errorf("current step requires %s role, but you are %s",
+						workflowState.CurrentStep.ResponsibleRole, approver.Role)
 				}
 			}
 
-			var balance models.LeaveBalance
-			err := tx.Where("user_id = ? AND year = ? AND leave_type = ?",
-				request.UserID, request.StartDate.Year(), request.LeaveType).
-				First(&balance).Error
-
+			// 2. Process Action via Workflow Service
+			// We need to use the transaction path. Since ProcessAction isn't exposed with Tx in interface (yet),
+			// we might need to expose it or trust the service handles it.
+			// Actually I verified earlier that workflowSvc has processActionWithTx but it's private.
+			updatedState, err := ls.workflowSvc.ProcessActionWithTx(tx, requestID, models.StepActionApproved, approverID, comment)
 			if err != nil {
 				return err
 			}
 
-			// Update balance with recalculated duration
-			balance.Used += durationToDeduct
-			balance.UpdatedAt = time.Now()
+			// 3. Update Request Status if Workflow Completed
+			if updatedState.IsComplete {
+				// If finalized, update the main request status
+				request.Status = updatedState.FinalStatus
+				now := time.Now()
+				switch request.Status {
+				case models.StatusApproved:
+					request.ApprovedAt = &now
+				case models.StatusRejected:
+					request.RejectedAt = &now
+					request.RejectionReason = comment
+				}
+				request.UpdatedAt = now
 
-			if err := tx.Save(&balance).Error; err != nil {
-				return err
+				if err := tx.Save(&request).Error; err != nil {
+					return err
+				}
+
+				// Only deduct balance if fully approved
+				if request.Status == models.StatusApproved {
+					// Deduct balance logic...
+					if request.LeaveType == models.LeaveTypeAnnual ||
+						request.LeaveType == models.LeaveTypeEmergency ||
+						request.LeaveType == models.LeaveTypeSick {
+
+						// Recalculate duration if it's 0 (legacy records)
+						durationToDeduct := request.DurationDays
+						// Simple check to ensure valid duration
+						if durationToDeduct <= 0 {
+							request.DurationDays = 1
+							durationToDeduct = 1
+						}
+
+						var balance models.LeaveBalance
+						err := tx.Where("user_id = ? AND year = ? AND leave_type = ?",
+							request.UserID, request.StartDate.Year(), request.LeaveType).
+							First(&balance).Error
+
+						if err != nil {
+							return err
+						}
+
+						balance.Used += durationToDeduct
+						balance.UpdatedAt = time.Now()
+
+						if err := tx.Save(&balance).Error; err != nil {
+							return err
+						}
+					}
+				}
 			}
+
+			// Workflow action handled. Return early.
+			return nil
 		}
 
-		// Create chronology entry
-		chronology := models.Chronology{
-			ID:             uuid.New(),
-			LeaveRequestID: request.ID,
-			Action:         "approved",
-			ActorID:        approverID,
-			Comment:        comment,
-			CreatedAt:      time.Now(),
-		}
-
-		if err := tx.Save(&request).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Create(&chronology).Error; err != nil {
-			return err
-		}
-
-		return nil
+		// If not returned by now, it means no workflow was found
+		return errors.New("no active workflow found for this request")
 	})
 }
 
@@ -366,7 +396,7 @@ func (ls *LeaveService) ProcessYearEndCarryForward() error {
 func (ls *LeaveService) GetUserLeaveRequests(userID uuid.UUID, status, year, leaveType string) ([]models.LeaveRequest, error) {
 	var requests []models.LeaveRequest
 
-	query := ls.db.Preload("User").Preload("Approver").Where("user_id = ?", userID)
+	query := ls.db.Preload("User").Preload("Approver").Preload("WorkflowState.CurrentStep").Where("user_id = ?", userID)
 
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -395,7 +425,7 @@ func (ls *LeaveService) GetLeaveRequest(requestID uuid.UUID) (*models.LeaveReque
 }
 
 func (ls *LeaveService) CancelLeaveRequest(requestID, userID uuid.UUID) error {
-	return ls.db.Transaction(func(tx *gorm.DB) error {
+	err := ls.db.Transaction(func(tx *gorm.DB) error {
 		var request models.LeaveRequest
 		if err := tx.First(&request, "id = ? AND user_id = ?", requestID, userID).Error; err != nil {
 			return err
@@ -423,8 +453,24 @@ func (ls *LeaveService) CancelLeaveRequest(requestID, userID uuid.UUID) error {
 			return err
 		}
 
-		return tx.Create(&chronology).Error
+		if err := tx.Create(&chronology).Error; err != nil {
+			return err
+		}
+
+		// Also cancel the workflow if it exists
+		if err := ls.workflowSvc.CancelWorkflowWithTx(tx, requestID, userID, "Request cancelled by user"); err != nil {
+			// We ignore "workflow state not found" errors as not all requests might have workflow state
+			// But since we can't easily check for that specific error without coupling, we just log it or ignore
+			// Ideally we chould check if it's a "record not found" error
+			// For now, let's just return nil if it fails, assuming it might not exist
+			// Or better, let CancelWorkflowWithTx handle "not found" gracefully (it already does return nil)
+			return err
+		}
+
+		return nil
 	})
+
+	return err
 }
 
 func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment string) error {
@@ -439,36 +485,60 @@ func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment str
 			return errors.New("leave request is not pending")
 		}
 
-		// Authorization check:
-		// - If ApproverID is set, only that approver can reject
-		// - If ApproverID is nil (escalated), any HR/Admin can reject (handled at route level)
-		if request.ApproverID != nil && *request.ApproverID != approverID {
-			return errors.New("not authorized to reject this request")
-		}
-
-		// Update request
-		now := time.Now()
-		request.Status = models.StatusRejected
-		request.RejectedAt = &now
-		request.RejectionReason = comment
-		request.UpdatedAt = now
-
-		// Create chronology entry
-		chronology := models.Chronology{
-			ID:             uuid.New(),
-			LeaveRequestID: request.ID,
-			Action:         "rejected",
-			ActorID:        approverID,
-			Comment:        comment,
-			CreatedAt:      time.Now(),
-		}
-
-		// Save updates
-		if err := tx.Save(&request).Error; err != nil {
+		// Get Approver details to check role
+		var approver models.User
+		if err := tx.First(&approver, "id = ?", approverID).Error; err != nil {
 			return err
 		}
 
-		return tx.Create(&chronology).Error
+		// Check if there is an active workflow state
+		var workflowState models.LeaveRequestWorkflowState
+		hasWorkflow := false
+		if err := tx.Preload("CurrentStep").Where("leave_request_id = ?", requestID).First(&workflowState).Error; err == nil {
+			hasWorkflow = true
+		}
+
+		if hasWorkflow && workflowState.CurrentStep != nil {
+			// Workflow-based rejection
+
+			// 1. Check Authorization (Role-based)
+			// Ensure approver has the responsible role
+			if approver.Role != workflowState.CurrentStep.ResponsibleRole {
+				// Special case: SysAdmin can override
+				if approver.Role != models.RoleSysAdmin {
+					return fmt.Errorf("current step requires %s role, but you are %s",
+						workflowState.CurrentStep.ResponsibleRole, approver.Role)
+				}
+			}
+
+			// 2. Process Action via Workflow Service
+			updatedState, err := ls.workflowSvc.ProcessActionWithTx(tx, requestID, models.StepActionRejected, approverID, comment)
+			if err != nil {
+				return err
+			}
+
+			// 3. Update Request Status if Workflow Completed
+			// For rejection, it usually completes immediately unless there's a multi-stage rejection (unlikely for now)
+			if updatedState.IsComplete {
+				request.Status = updatedState.FinalStatus
+				now := time.Now()
+				if request.Status == models.StatusRejected {
+					request.RejectedAt = &now
+					request.RejectionReason = comment
+				}
+				request.UpdatedAt = now
+
+				if err := tx.Save(&request).Error; err != nil {
+					return err
+				}
+			}
+
+			// Workflow action handled. Return early.
+			return nil
+		}
+
+		// If not returned by now, it means no workflow was found
+		return errors.New("no active workflow found for this request")
 	})
 }
 
@@ -477,6 +547,7 @@ func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year s
 
 	query := ls.db.Preload("User").
 		Preload("Approver").
+		Preload("WorkflowState.CurrentStep").
 		Joins("JOIN users ON users.id = leave_requests.user_id").
 		Where("users.manager_id = ?", managerID)
 
@@ -525,7 +596,7 @@ func (ls *LeaveService) GetUserLeaveBalance(userID uuid.UUID, year string) (map[
 func (ls *LeaveService) GetAllLeaveRequests(status, year, department string) ([]models.LeaveRequest, error) {
 	var requests []models.LeaveRequest
 
-	query := ls.db.Preload("User").Preload("Approver")
+	query := ls.db.Preload("User").Preload("Approver").Preload("WorkflowState.CurrentStep")
 
 	if status != "" {
 		query = query.Where("status = ?", status)
