@@ -1,22 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Plus, Search, MoreVertical } from 'lucide-react';
+import { Plus, Search, MoreVertical, Shield, UserCheck, UserX } from 'lucide-react';
 import api from '../services/api';
-import type { User } from '../types';
+import type { User, UserRole } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Badge } from '../components/ui/Badge';
 import { format } from 'date-fns';
 import { useToast } from '../components/ui/Toast';
+import { useAuth } from '../context/AuthContext';
+import { getRoleLabel, getRoleBadgeColor, getAssignableRoles } from '../utils/roles';
 
 const UserManagement: React.FC = () => {
+    const { user: currentUser } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [editUser, setEditUser] = useState<User | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [roleFilter, setRoleFilter] = useState<string>('all');
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -36,11 +39,13 @@ const UserManagement: React.FC = () => {
         fetchUsers();
     }, []);
 
-    const filteredUsers = users.filter(user =>
-        user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.last_name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredUsers = users.filter(user => {
+        const matchesSearch = user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            user.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            user.last_name.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+        return matchesSearch && matchesRole;
+    });
 
     return (
         <div className="space-y-6">
@@ -56,7 +61,7 @@ const UserManagement: React.FC = () => {
             </div>
 
             <Card className="p-4">
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-3 mb-4">
                     <div className="relative flex-1 max-w-sm">
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                         <Input
@@ -65,6 +70,22 @@ const UserManagement: React.FC = () => {
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
+                    </div>
+                    <select
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value)}
+                        className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                    >
+                        <option value="all">All Roles</option>
+                        <option value="sysadmin">System Admin</option>
+                        <option value="admin">Administrator</option>
+                        <option value="hr">Human Resources</option>
+                        <option value="hod">Head of Department</option>
+                        <option value="manager">Manager</option>
+                        <option value="staff">Staff</option>
+                    </select>
+                    <div className="text-sm text-slate-500">
+                        {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}
                     </div>
                 </div>
 
@@ -75,6 +96,7 @@ const UserManagement: React.FC = () => {
                                 <th className="px-6 py-4 font-semibold text-slate-600">User</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Role</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Department</th>
+                                <th className="px-6 py-4 font-semibold text-slate-600">Status</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600">Joined</th>
                                 <th className="px-6 py-4 font-semibold text-slate-600 text-right">Actions</th>
                             </tr>
@@ -82,13 +104,13 @@ const UserManagement: React.FC = () => {
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         Loading users...
                                     </td>
                                 </tr>
                             ) : filteredUsers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         No users found
                                     </td>
                                 </tr>
@@ -107,12 +129,24 @@ const UserManagement: React.FC = () => {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <Badge variant={user.role === 'admin' || user.role === 'sysadmin' ? 'primary' : 'default'}>
-                                                {user.role}
-                                            </Badge>
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role as UserRole)}`}>
+                                                <Shield className="h-3 w-3" />
+                                                {getRoleLabel(user.role as UserRole)}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-slate-600">
                                             {user.department || '-'}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {user.is_active !== false ? (
+                                                <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                                                    <UserCheck className="h-3 w-3" /> Active
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
+                                                    <UserX className="h-3 w-3" /> Inactive
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-slate-600">
                                             {format(new Date(user.joined_date), 'MMM d, yyyy')}
@@ -139,6 +173,7 @@ const UserManagement: React.FC = () => {
                 isOpen={isCreateModalOpen}
                 onClose={() => setIsCreateModalOpen(false)}
                 onSuccess={fetchUsers}
+                currentUserRole={currentUser?.role as UserRole}
             />
 
             {editUser && (
@@ -147,13 +182,14 @@ const UserManagement: React.FC = () => {
                     isOpen={!!editUser}
                     onClose={() => setEditUser(null)}
                     onSuccess={fetchUsers}
+                    currentUserRole={currentUser?.role as UserRole}
                 />
             )}
         </div>
     );
 };
 
-const CreateUserModal = ({ isOpen, onClose, onSuccess }: { isOpen: boolean, onClose: () => void, onSuccess: () => void }) => {
+const CreateUserModal = ({ isOpen, onClose, onSuccess, currentUserRole }: { isOpen: boolean, onClose: () => void, onSuccess: () => void, currentUserRole?: UserRole }) => {
     const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm();
     const [error, setError] = useState('');
     const [managers, setManagers] = useState<User[]>([]);
@@ -231,11 +267,9 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess }: { isOpen: boolean, onCl
                             className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                             {...register('role', { required: 'Required' })}
                         >
-                            <option value="staff">Staff</option>
-                            <option value="manager">Manager</option>
-                            <option value="hod">Head of Department</option>
-                            <option value="hr">HR</option>
-                            <option value="admin">Admin</option>
+                            {getAssignableRoles(currentUserRole).map(role => (
+                                <option key={role} value={role}>{getRoleLabel(role)}</option>
+                            ))}
                         </select>
                     </div>
                     <div className="space-y-1">
@@ -264,11 +298,11 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess }: { isOpen: boolean, onCl
                         <option value="">No Manager (HR will approve leaves)</option>
                         {managers.map(m => (
                             <option key={m.id} value={m.id}>
-                                {m.first_name} {m.last_name} ({m.role})
+                                {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department ? ` (${m.department})` : ''}
                             </option>
                         ))}
                     </select>
-                    <p className="text-xs text-slate-400">Leave requests will be sent to this manager for approval</p>
+                    <p className="text-xs text-slate-400">Leave requests will be routed through the workflow for this manager's department</p>
                 </div>
 
                 <div className="flex justify-end gap-3 mt-6">
@@ -280,7 +314,7 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess }: { isOpen: boolean, onCl
     );
 };
 
-const EditUserModal = ({ user, isOpen, onClose, onSuccess }: { user: User, isOpen: boolean, onClose: () => void, onSuccess: () => void }) => {
+const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { user: User, isOpen: boolean, onClose: () => void, onSuccess: () => void, currentUserRole?: UserRole }) => {
     const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState<'details' | 'probation' | 'balance'>('details');
     const [message, setMessage] = useState('');
@@ -481,11 +515,9 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess }: { user: User, isOpe
                                     {...detailsForm.register("role", { required: true })}
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                                 >
-                                    <option value="staff">Staff</option>
-                                    <option value="manager">Manager</option>
-                                    <option value="hod">Head of Department</option>
-                                    <option value="hr">HR</option>
-                                    <option value="admin">Admin</option>
+                                    {getAssignableRoles(currentUserRole).map(role => (
+                                        <option key={role} value={role}>{getRoleLabel(role)}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div className="space-y-1">
@@ -512,11 +544,11 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess }: { user: User, isOpe
                                 <option value="">No Manager (HR will approve leaves)</option>
                                 {managers.map(m => (
                                     <option key={m.id} value={m.id}>
-                                        {m.first_name} {m.last_name} ({m.role})
+                                        {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department ? ` (${m.department})` : ''}
                                     </option>
                                 ))}
                             </select>
-                            <p className="text-xs text-slate-400">Leave requests will be sent to this manager for approval</p>
+                            <p className="text-xs text-slate-400">Leave requests will be routed through the workflow for this manager's department</p>
                         </div>
                         <div className="space-y-1">
                             <label className="text-sm font-medium text-slate-700">Joined Date</label>
