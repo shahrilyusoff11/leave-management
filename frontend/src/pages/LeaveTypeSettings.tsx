@@ -4,6 +4,7 @@ import api from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { useToast } from '../components/ui/Toast';
 import WorkflowEditor from '../components/WorkflowEditor';
 import type { LeaveType } from '../types';
 
@@ -45,8 +46,7 @@ const LeaveTypeSettings: React.FC = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<LeaveTypeConfig>>({});
     const [serviceTiers, setServiceTiers] = useState<ServiceTier[]>([]);
-    const [message, setMessage] = useState('');
-    const [error, setError] = useState('');
+    const { showToast } = useToast();
     const [workflowLeaveType, setWorkflowLeaveType] = useState<LeaveType | null>(null);
 
     const fetchConfigs = async () => {
@@ -56,7 +56,7 @@ const LeaveTypeSettings: React.FC = () => {
             setConfigs(response.data);
         } catch (err) {
             console.error("Failed to fetch configs", err);
-            setError("Failed to load leave type configurations");
+            showToast("Failed to load leave type configurations", "error");
         } finally {
             setLoading(false);
         }
@@ -88,9 +88,6 @@ const LeaveTypeSettings: React.FC = () => {
         // Sort by years
         tiers.sort((a, b) => parseInt(a.years) - parseInt(b.years));
         setServiceTiers(tiers);
-
-        setMessage('');
-        setError('');
     };
 
     const handleCancel = () => {
@@ -119,8 +116,6 @@ const LeaveTypeSettings: React.FC = () => {
 
     const handleSave = async (leaveType: string) => {
         setSaving(leaveType);
-        setMessage('');
-        setError('');
 
         // Convert tiers array back to object
         const tiersObject: Record<string, number> = {};
@@ -137,13 +132,13 @@ const LeaveTypeSettings: React.FC = () => {
 
         try {
             await api.put(`/admin/leave-type-configs/${leaveType}`, payload);
-            setMessage(`${leaveTypeLabels[leaveType] || leaveType} configuration updated successfully`);
+            showToast(`${leaveTypeLabels[leaveType] || leaveType} configuration updated successfully`, "success");
             setEditingId(null);
             setEditForm({});
             setServiceTiers([]);
             fetchConfigs();
         } catch (err: any) {
-            setError(err.response?.data?.error || "Failed to update configuration");
+            showToast(err.response?.data?.error || "Failed to update configuration", "error");
         } finally {
             setSaving(null);
         }
@@ -165,17 +160,6 @@ const LeaveTypeSettings: React.FC = () => {
                     <p className="text-slate-500 mt-1">Configure entitlements for each leave type</p>
                 </div>
             </div>
-
-            {message && (
-                <div className="p-4 bg-green-50 text-green-700 rounded-lg border border-green-200">
-                    {message}
-                </div>
-            )}
-            {error && (
-                <div className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-                    {error}
-                </div>
-            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {configs.map((config) => (
