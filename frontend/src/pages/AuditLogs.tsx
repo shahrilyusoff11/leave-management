@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Search } from 'lucide-react';
+import { Search, Filter, Eye, X, Clock, User, Globe, Activity, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../services/api';
-import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
+import { getRoleLabel } from '../utils/roles';
+import type { UserRole } from '../types';
 
 interface AuditLog {
     id: string;
@@ -21,107 +21,23 @@ interface AuditLog {
     after_state?: Record<string, any>;
 }
 
-const AuditLogDetailsModal: React.FC<{
-    log: AuditLog | null;
-    isOpen: boolean;
-    onClose: () => void;
-}> = ({ log, isOpen, onClose }) => {
-    if (!isOpen || !log) return null;
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-                <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-900">Audit Log Details</h2>
-                        <p className="text-sm text-slate-500 mt-1">
-                            {format(new Date(log.created_at), 'PPP pp')}
-                        </p>
-                    </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-                        <span className="sr-only">Close</span>
-                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-1">
-                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Actor</span>
-                            <div className="flex items-center gap-2">
-                                <span className="font-medium text-slate-900">{log.actor_email}</span>
-                                <Badge variant="secondary">{log.actor_role}</Badge>
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Action</span>
-                            <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="font-mono">{log.method}</Badge>
-                                <span className="font-mono text-sm text-slate-600">{log.endpoint}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {(log.before_state || log.after_state) ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-red-400"></span>
-                                    Before Change
-                                </h3>
-                                <div className="bg-slate-50 rounded-md p-4 border border-slate-200 overflow-x-auto">
-                                    {log.before_state ? (
-                                        <pre className="text-xs font-mono text-slate-700">
-                                            {JSON.stringify(log.before_state, null, 2)}
-                                        </pre>
-                                    ) : (
-                                        <span className="text-sm text-slate-400 italic">No previous state recorded</span>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-green-400"></span>
-                                    After Change
-                                </h3>
-                                <div className="bg-slate-50 rounded-md p-4 border border-slate-200 overflow-x-auto">
-                                    {log.after_state ? (
-                                        <pre className="text-xs font-mono text-slate-700">
-                                            {JSON.stringify(log.after_state, null, 2)}
-                                        </pre>
-                                    ) : (
-                                        <span className="text-sm text-slate-400 italic">No new state recorded</span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-slate-50 rounded-lg p-8 text-center border border-dashed border-slate-300">
-                            <p className="text-slate-500">No detailed state changes were captured for this event.</p>
-                        </div>
-                    )}
-                </div>
-
-                <div className="p-6 border-t border-slate-200 bg-slate-50 rounded-b-lg">
-                    <button
-                        onClick={onClose}
-                        className="w-full sm:w-auto px-4 py-2 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                        Close Details
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+const METHOD_COLORS: Record<string, string> = {
+    GET: 'bg-blue-100 text-blue-700',
+    POST: 'bg-green-100 text-green-700',
+    PUT: 'bg-amber-100 text-amber-700',
+    DELETE: 'bg-red-100 text-red-700',
+    PATCH: 'bg-purple-100 text-purple-700',
 };
+
+const ROWS_PER_PAGE = 15;
 
 const AuditLogs: React.FC = () => {
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [methodFilter, setMethodFilter] = useState<string>('all');
     const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
 
     const fetchLogs = async () => {
         setLoading(true);
@@ -145,121 +61,285 @@ const AuditLogs: React.FC = () => {
         fetchLogs();
     }, []);
 
-    const getMethodVariant = (method: string) => {
-        switch (method) {
-            case 'GET': return 'primary';
-            case 'POST': return 'success';
-            case 'PUT': return 'warning';
-            case 'DELETE': return 'danger';
-            default: return 'default';
-        }
-    };
+    const filteredLogs = logs.filter(log => {
+        const matchesSearch =
+            (log.endpoint || log.action || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (log.actor_email || '').toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesMethod = methodFilter === 'all' || log.method === methodFilter;
+        return matchesSearch && matchesMethod;
+    });
 
-    const filteredLogs = logs.filter(log =>
-        (log.endpoint || log.action || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (log.actor_email || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Pagination
+    const totalPages = Math.ceil(filteredLogs.length / ROWS_PER_PAGE);
+    const startIdx = (currentPage - 1) * ROWS_PER_PAGE;
+    const paginatedLogs = filteredLogs.slice(startIdx, startIdx + ROWS_PER_PAGE);
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, methodFilter]);
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="space-y-4">
+            {/* Header */}
+            <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">System Audit Logs</h1>
-                    <p className="text-slate-500 mt-1">Monitor system activity and security events</p>
+                    <p className="text-slate-500 text-sm mt-0.5">Monitor system activity and security events</p>
                 </div>
             </div>
 
-            <Card className="p-4">
-                <div className="flex items-center gap-2 mb-4">
-                    <div className="relative flex-1 max-w-sm">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                        <Input
-                            placeholder="Search logs..."
-                            className="pl-9"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+            {/* Filters */}
+            <div className="flex items-center gap-3">
+                <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input
+                        placeholder="Search by endpoint or email..."
+                        className="pl-9"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <Filter className="h-4 w-4 text-slate-400" />
+                    <select
+                        value={methodFilter}
+                        onChange={(e) => setMethodFilter(e.target.value)}
+                        className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                    >
+                        <option value="all">All Methods</option>
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                    </select>
+                </div>
+                <div className="text-sm text-slate-500">
+                    {filteredLogs.length} event{filteredLogs.length !== 1 ? 's' : ''}
+                </div>
+            </div>
+
+            {/* Table */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <table className="w-full text-left text-xs">
+                    <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">Time</th>
+                            <th className="px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">User</th>
+                            <th className="px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">Role</th>
+                            <th className="px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">Method</th>
+                            <th className="px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">Endpoint</th>
+                            <th className="px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">IP</th>
+                            <th className="px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider text-center">Info</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                        {loading ? (
+                            <tr>
+                                <td colSpan={7} className="px-4 py-16 text-center text-slate-400">
+                                    <Activity className="h-6 w-6 mx-auto mb-2 animate-pulse" />
+                                    Loading audit logs...
+                                </td>
+                            </tr>
+                        ) : paginatedLogs.length === 0 ? (
+                            <tr>
+                                <td colSpan={7} className="px-4 py-16 text-center text-slate-400">
+                                    No logs found
+                                </td>
+                            </tr>
+                        ) : (
+                            paginatedLogs.map((log) => (
+                                <tr
+                                    key={log.id}
+                                    className="hover:bg-slate-50/70 transition-colors cursor-pointer"
+                                    onClick={() => setSelectedLog(log)}
+                                >
+                                    <td className="px-4 py-2.5 whitespace-nowrap text-slate-500 font-mono">
+                                        {format(new Date(log.created_at), 'MMM d, HH:mm:ss')}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-800 font-medium truncate max-w-[200px]" title={log.actor_email}>
+                                        {log.actor_email || 'System'}
+                                    </td>
+                                    <td className="px-4 py-2.5">
+                                        <span className="text-slate-500 capitalize">
+                                            {log.actor_role ? getRoleLabel(log.actor_role as UserRole) : '—'}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-2.5">
+                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${METHOD_COLORS[log.method] || 'bg-slate-100 text-slate-600'}`}>
+                                            {log.method}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-600 font-mono truncate max-w-[300px]" title={log.endpoint || log.action}>
+                                        {log.endpoint || log.action}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-400 font-mono">
+                                        {log.ip_address || '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-center">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setSelectedLog(log); }}
+                                            className="text-slate-400 hover:text-brand-600 transition-colors"
+                                            title="View details"
+                                        >
+                                            <Eye className="h-3.5 w-3.5" />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                        <p className="text-xs text-slate-500">
+                            Showing {startIdx + 1}–{Math.min(startIdx + ROWS_PER_PAGE, filteredLogs.length)} of {filteredLogs.length}
+                        </p>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="p-1.5 rounded-md hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <ChevronLeft className="h-4 w-4 text-slate-600" />
+                            </button>
+                            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                                let pageNum: number;
+                                if (totalPages <= 5) {
+                                    pageNum = i + 1;
+                                } else if (currentPage <= 3) {
+                                    pageNum = i + 1;
+                                } else if (currentPage >= totalPages - 2) {
+                                    pageNum = totalPages - 4 + i;
+                                } else {
+                                    pageNum = currentPage - 2 + i;
+                                }
+                                return (
+                                    <button
+                                        key={pageNum}
+                                        onClick={() => setCurrentPage(pageNum)}
+                                        className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition-colors ${currentPage === pageNum
+                                                ? 'bg-brand-600 text-white'
+                                                : 'text-slate-600 hover:bg-slate-200'
+                                            }`}
+                                    >
+                                        {pageNum}
+                                    </button>
+                                );
+                            })}
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="p-1.5 rounded-md hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <ChevronRight className="h-4 w-4 text-slate-600" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Details slide-over panel */}
+            {selectedLog && (
+                <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedLog(null)}>
+                    <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
+                    <div
+                        className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Panel header */}
+                        <div className="flex-none flex items-center justify-between p-5 border-b border-slate-200">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-900">Log Details</h2>
+                                <p className="text-xs text-slate-400 mt-0.5 font-mono">{selectedLog.id}</p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedLog(null)}
+                                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        {/* Panel body */}
+                        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium uppercase tracking-wider">
+                                        <Clock className="h-3 w-3" /> Time
+                                    </div>
+                                    <p className="text-sm text-slate-800 font-mono">
+                                        {format(new Date(selectedLog.created_at), 'PPP pp')}
+                                    </p>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium uppercase tracking-wider">
+                                        <Globe className="h-3 w-3" /> IP Address
+                                    </div>
+                                    <p className="text-sm text-slate-800 font-mono">{selectedLog.ip_address || '—'}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium uppercase tracking-wider">
+                                        <User className="h-3 w-3" /> Actor
+                                    </div>
+                                    <p className="text-sm text-slate-800">{selectedLog.actor_email || 'System'}</p>
+                                    <span className="text-xs text-slate-500 capitalize">{selectedLog.actor_role ? getRoleLabel(selectedLog.actor_role as UserRole) : '—'}</span>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium uppercase tracking-wider">
+                                        <Activity className="h-3 w-3" /> Action
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${METHOD_COLORS[selectedLog.method] || 'bg-slate-100 text-slate-600'}`}>
+                                            {selectedLog.method}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 font-mono break-all">{selectedLog.endpoint || selectedLog.action}</p>
+                                </div>
+                            </div>
+
+                            {/* State changes */}
+                            {(selectedLog.before_state || selectedLog.after_state) ? (
+                                <div className="space-y-3">
+                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">State Changes</h3>
+
+                                    {selectedLog.before_state && (
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2 text-xs font-medium text-red-600">
+                                                <span className="w-2 h-2 rounded-full bg-red-400" />
+                                                Before
+                                            </div>
+                                            <pre className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] font-mono text-slate-700 overflow-x-auto max-h-[200px] overflow-y-auto">
+                                                {JSON.stringify(selectedLog.before_state, null, 2)}
+                                            </pre>
+                                        </div>
+                                    )}
+
+                                    {selectedLog.after_state && (
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2 text-xs font-medium text-green-600">
+                                                <span className="w-2 h-2 rounded-full bg-green-400" />
+                                                After
+                                            </div>
+                                            <pre className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] font-mono text-slate-700 overflow-x-auto max-h-[200px] overflow-y-auto">
+                                                {JSON.stringify(selectedLog.after_state, null, 2)}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="bg-slate-50 rounded-lg p-6 text-center border border-dashed border-slate-200">
+                                    <p className="text-sm text-slate-400">No state changes captured for this event</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200">
-                                <th className="px-6 py-4 font-semibold text-slate-600">Time</th>
-                                <th className="px-6 py-4 font-semibold text-slate-600">User</th>
-                                <th className="px-6 py-4 font-semibold text-slate-600">Role</th>
-                                <th className="px-6 py-4 font-semibold text-slate-600">Action</th>
-                                <th className="px-6 py-4 font-semibold text-slate-600">IP Address</th>
-                                <th className="px-6 py-4 font-semibold text-slate-600 text-right">Details</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                                        Loading logs...
-                                    </td>
-                                </tr>
-                            ) : filteredLogs.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                                        No logs found. Try performing some actions first (navigate around, submit leave, etc.)
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredLogs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-slate-50 transition-colors text-xs">
-                                        <td className="px-6 py-4 whitespace-nowrap text-slate-600 font-mono">
-                                            {format(new Date(log.created_at), 'MMM d, HH:mm:ss')}
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-900 font-medium">
-                                            {log.actor_email || 'System'}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <Badge variant="secondary" className="capitalize">
-                                                {log.actor_role || 'N/A'}
-                                            </Badge>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-600">
-                                            <div className="flex items-center gap-2">
-                                                {log.method && (
-                                                    <Badge variant={getMethodVariant(log.method) as any} className="text-[10px]">
-                                                        {log.method}
-                                                    </Badge>
-                                                )}
-                                                <span className="truncate max-w-xs font-mono" title={log.action}>
-                                                    {log.endpoint || log.action}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-500 font-mono">
-                                            {log.ip_address || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <button
-                                                onClick={() => setSelectedLog(log)}
-                                                className="text-indigo-600 hover:text-indigo-900 font-medium"
-                                            >
-                                                View
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </Card>
-
-            <AuditLogDetailsModal
-                log={selectedLog}
-                isOpen={!!selectedLog}
-                onClose={() => setSelectedLog(null)}
-            />
+            )}
         </div>
     );
 };
 
 export default AuditLogs;
-
