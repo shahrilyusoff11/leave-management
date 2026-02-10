@@ -19,12 +19,24 @@ func NewWorkflowService(db *gorm.DB) *WorkflowService {
 	return &WorkflowService{db: db}
 }
 
-// GetWorkflowForLeaveType returns the workflow configuration for a leave type
+// GetWorkflowForLeaveType returns the active workflow configuration for a leave type (used at runtime)
 func (s *WorkflowService) GetWorkflowForLeaveType(leaveType models.LeaveType) (*models.LeaveWorkflow, error) {
 	var workflow models.LeaveWorkflow
 	err := s.db.Preload("Steps", func(db *gorm.DB) *gorm.DB {
 		return db.Order("step_order ASC")
 	}).Where("leave_type = ? AND is_active = ?", leaveType, true).First(&workflow).Error
+	if err != nil {
+		return nil, err
+	}
+	return &workflow, nil
+}
+
+// GetWorkflowByLeaveType returns the workflow for a leave type regardless of active status (used by admin)
+func (s *WorkflowService) GetWorkflowByLeaveType(leaveType models.LeaveType) (*models.LeaveWorkflow, error) {
+	var workflow models.LeaveWorkflow
+	err := s.db.Preload("Steps", func(db *gorm.DB) *gorm.DB {
+		return db.Order("step_order ASC")
+	}).Where("leave_type = ?", leaveType).First(&workflow).Error
 	if err != nil {
 		return nil, err
 	}

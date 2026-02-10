@@ -296,7 +296,7 @@ func (h *AdminHandler) GetWorkflow(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
 	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
 
-	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
@@ -310,7 +310,7 @@ func (h *AdminHandler) UpdateWorkflow(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
 	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
 
-	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
@@ -349,7 +349,7 @@ func (h *AdminHandler) CreateWorkflowStep(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
 	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
 
-	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
@@ -439,7 +439,7 @@ func (h *AdminHandler) ReorderWorkflowSteps(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
 	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
 
-	workflow, err := workflowSvc.GetWorkflowForLeaveType(leaveType)
+	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Workflow not found"})
 		return
