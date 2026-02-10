@@ -170,6 +170,16 @@ func (h *AdminHandler) TriggerYearEndProcess(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Year-end process completed"})
 }
 
+func (h *AdminHandler) GetDashboardStats(c *gin.Context) {
+	stats, err := h.leaveService.GetDashboardStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
 func (h *AdminHandler) GetAuditLogs(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))

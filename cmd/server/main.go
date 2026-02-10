@@ -202,6 +202,7 @@ func main() {
 			admin.DELETE("/holidays/:id", adminHandler.DeletePublicHoliday)
 			admin.GET("/config", adminHandler.GetSystemConfig)
 			admin.PUT("/config", adminHandler.UpdateSystemConfig)
+			admin.GET("/dashboard-stats", adminHandler.GetDashboardStats)
 			admin.POST("/year-end-process", adminHandler.TriggerYearEndProcess)
 			admin.GET("/audit-logs", adminHandler.GetAuditLogs)
 			admin.GET("/leave-type-configs", adminHandler.GetLeaveTypeConfigs)

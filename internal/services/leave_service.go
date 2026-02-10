@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"leave-management-system/internal/models"
+	"strings"
 	"time"
 
 	"leave-management-system/pkg/logger"
@@ -657,13 +658,33 @@ func (ls *LeaveService) UpdateLeaveBalance(userID uuid.UUID, leaveType models.Le
 func (ls *LeaveService) GeneratePayrollReport(month, year string) ([]byte, error) {
 	// Get all users
 	var users []models.User
-	if err := ls.db.Find(&users).Error; err != nil {
+	if err := ls.db.Order("last_name, first_name").Find(&users).Error; err != nil {
 		return nil, err
 	}
 
-	// Build CSV header
-	csv := "Employee ID,Email,First Name,Last Name,Department,Position,"
-	csv += "Annual Leave Used,Sick Leave Used,Unpaid Leave Days,Total Leave Days\n"
+	// Define all leave types to include in report
+	leaveTypes := []models.LeaveType{
+		models.LeaveTypeAnnual,
+		models.LeaveTypeSick,
+		models.LeaveTypeHospitalization,
+		models.LeaveTypeMaternity,
+		models.LeaveTypePaternity,
+		models.LeaveTypeEmergency,
+		models.LeaveTypeUnpaid,
+		models.LeaveTypeUnrecorded,
+	}
+
+	// Build CSV header dynamically
+	csv := "Employee ID,Email,First Name,Last Name,Department,Position"
+	for _, lt := range leaveTypes {
+		// Capitalize first letter for header (e.g., "Annual Leave")
+		header := string(lt)
+		if len(header) > 0 {
+			header = strings.ToUpper(header[:1]) + header[1:]
+		}
+		csv += fmt.Sprintf(",%s Leave", header)
+	}
+	csv += ",Total Leave Days\n"
 
 	for _, user := range users {
 		// Get leave requests for the month
@@ -671,40 +692,44 @@ func (ls *LeaveService) GeneratePayrollReport(month, year string) ([]byte, error
 		query := ls.db.Where("user_id = ? AND status = ?", user.ID, models.StatusApproved)
 
 		if month != "" && year != "" {
-			query = query.Where("EXTRACT(MONTH FROM start_date) = ? AND EXTRACT(YEAR FROM start_date) = ?", month, year)
+			// Filter by start date falling in the selected month/year
+			// Note: This matches leaves STARTING in the month.
+			// Ideally payroll might want leaves OVERLAPPING, but start date is a standard simple convention.
+			query = query.Where("EXTRACT(MONTH FROM start_date) = ? AND EXTRACT(YEAR FROM start_date) = ? top", month, year)
 		}
 
 		if err := query.Find(&requests).Error; err != nil {
 			continue
 		}
 
-		// Calculate leave by type
-		var annualUsed, sickUsed, unpaidUsed, totalDays float64
+		// Initialize usage map
+		usage := make(map[models.LeaveType]float64)
+		var totalDays float64
+
+		// Calculate usage per type
 		for _, req := range requests {
-			switch req.LeaveType {
-			case models.LeaveTypeAnnual:
-				annualUsed += req.DurationDays
-			case models.LeaveTypeSick:
-				sickUsed += req.DurationDays
-			case models.LeaveTypeUnpaid:
-				unpaidUsed += req.DurationDays
-			}
+			usage[req.LeaveType] += req.DurationDays
 			totalDays += req.DurationDays
 		}
 
-		// Add row to CSV
-		csv += fmt.Sprintf("%s,%s,%s,%s,%s,%s,%.1f,%.1f,%.1f,%.1f\n",
+		// Build row
+		row := fmt.Sprintf("%s,%s,%s,%s,%s,%s",
 			user.ID.String(),
 			user.Email,
 			user.FirstName,
 			user.LastName,
 			user.Department,
 			user.Position,
-			annualUsed,
-			sickUsed,
-			unpaidUsed,
-			totalDays,
 		)
+
+		// Append usage for each type in correct order
+		for _, lt := range leaveTypes {
+			days := usage[lt]
+			row += fmt.Sprintf(",%.1f", days)
+		}
+
+		row += fmt.Sprintf(",%.1f\n", totalDays)
+		csv += row
 	}
 
 	return []byte(csv), nil
@@ -772,4 +797,39 @@ func (ls *LeaveService) GetLeaveRequestChronology(requestID uuid.UUID) ([]models
 		return nil, err
 	}
 	return chronology, nil
+}
+
+// GetDashboardStats aggregates statistics for the dashboard
+func (ls *LeaveService) GetDashboardStats() (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// 1. Counts by Status
+	var statusCounts []struct {
+		Status string
+		Count  int64
+	}
+	if err := ls.db.Model(&models.LeaveRequest{}).Select("status, count(*) as count").Group("status").Scan(&statusCounts).Error; err != nil {
+		return nil, err
+	}
+
+	stats["status_counts"] = statusCounts
+
+	// 2. Approved Leaves by Type (for Pie Chart)
+	var typeCounts []struct {
+		LeaveType models.LeaveType
+		Count     int64
+	}
+	if err := ls.db.Model(&models.LeaveRequest{}).Where("status = ?", models.StatusApproved).Select("leave_type, count(*) as count").Group("leave_type").Scan(&typeCounts).Error; err != nil {
+		return nil, err
+	}
+	stats["type_counts"] = typeCounts
+
+	// 3. Recent Activity (Latest 10 requests)
+	var recentRequests []models.LeaveRequest
+	if err := ls.db.Preload("User").Order("created_at desc").Limit(10).Find(&recentRequests).Error; err != nil {
+		return nil, err
+	}
+	stats["recent_activity"] = recentRequests
+
+	return stats, nil
 }
