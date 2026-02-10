@@ -356,6 +356,11 @@
   border-color: #6366f1;
 }
 
+.form-group select option {
+  background-color: #0f172a;
+  color: #f8fafc;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
