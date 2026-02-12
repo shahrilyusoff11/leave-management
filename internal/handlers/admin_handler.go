@@ -291,7 +291,7 @@ func (h *AdminHandler) UpdateLeaveTypeConfig(c *gin.Context) {
 
 // GetAllWorkflows returns all workflow configurations
 func (h *AdminHandler) GetAllWorkflows(c *gin.Context) {
-	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB(), nil)
 	workflows, err := workflowSvc.GetAllWorkflows()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -304,7 +304,7 @@ func (h *AdminHandler) GetAllWorkflows(c *gin.Context) {
 // GetWorkflow returns workflow for a specific leave type
 func (h *AdminHandler) GetWorkflow(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
-	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB(), nil)
 
 	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {
@@ -318,7 +318,7 @@ func (h *AdminHandler) GetWorkflow(c *gin.Context) {
 // UpdateWorkflow updates a workflow configuration
 func (h *AdminHandler) UpdateWorkflow(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
-	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB(), nil)
 
 	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {
@@ -357,7 +357,7 @@ func (h *AdminHandler) UpdateWorkflow(c *gin.Context) {
 // CreateWorkflowStep adds a new step to a workflow
 func (h *AdminHandler) CreateWorkflowStep(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
-	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB(), nil)
 
 	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {
@@ -388,7 +388,7 @@ func (h *AdminHandler) UpdateWorkflowStep(c *gin.Context) {
 		return
 	}
 
-	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB(), nil)
 
 	step, err := workflowSvc.GetWorkflowStep(stepID)
 	if err != nil {
@@ -435,7 +435,7 @@ func (h *AdminHandler) DeleteWorkflowStep(c *gin.Context) {
 		return
 	}
 
-	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB(), nil)
 	if err := workflowSvc.DeleteWorkflowStep(stepID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -447,7 +447,7 @@ func (h *AdminHandler) DeleteWorkflowStep(c *gin.Context) {
 // ReorderWorkflowSteps updates the order of steps in a workflow
 func (h *AdminHandler) ReorderWorkflowSteps(c *gin.Context) {
 	leaveType := models.LeaveType(c.Param("type"))
-	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB())
+	workflowSvc := services.NewWorkflowService(h.leaveService.GetDB(), nil)
 
 	workflow, err := workflowSvc.GetWorkflowByLeaveType(leaveType)
 	if err != nil {

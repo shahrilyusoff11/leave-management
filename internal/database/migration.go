@@ -16,7 +16,10 @@ func Migrate(db *gorm.DB) error {
 
 	// Run migrations
 	err := db.AutoMigrate(
+		// Department must come before User (FK dependency)
+		&models.Department{},
 		&models.User{},
+		&models.HODDelegation{},
 		&models.LeaveRequest{},
 		&models.LeaveBalance{},
 		&models.Chronology{},
@@ -46,6 +49,11 @@ func Migrate(db *gorm.DB) error {
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_workflow_steps_order ON workflow_steps(workflow_id, step_order)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_leave_workflows_leave_type ON leave_workflows(leave_type)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_workflow_states_request_id ON leave_request_workflow_states(leave_request_id)")
+	// Department and delegation indexes
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_users_department_id ON users(department_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_hod_delegations_department_id ON hod_delegations(department_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_hod_delegations_delegate_id ON hod_delegations(delegate_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_hod_delegations_dates ON hod_delegations(start_date, end_date)")
 
 	return nil
 }

@@ -42,6 +42,7 @@ func (us *UserService) GetUser(id uuid.UUID) (*models.User, error) {
 func (us *UserService) GetUserWithDetails(id uuid.UUID) (*models.User, error) {
 	var user models.User
 	err := us.db.Preload("Manager").
+		Preload("DepartmentRef").
 		Preload("LeaveEntitlements").
 		Preload("ManagedUsers").
 		First(&user, "id = ?", id).Error
@@ -50,7 +51,7 @@ func (us *UserService) GetUserWithDetails(id uuid.UUID) (*models.User, error) {
 
 func (us *UserService) GetAllUsers() ([]models.User, error) {
 	var users []models.User
-	err := us.db.Preload("Manager").Find(&users).Error
+	err := us.db.Preload("Manager").Preload("DepartmentRef").Find(&users).Error
 	return users, err
 }
 

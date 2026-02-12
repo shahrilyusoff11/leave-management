@@ -20,17 +20,19 @@ type LeaveService struct {
 	holidayService     *HolidayService
 	leaveTypeConfigSvc *LeaveTypeConfigService
 	workflowSvc        *WorkflowService
+	departmentSvc      *DepartmentService
 }
 
 func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
-	auditLogger *logger.AuditLogger, holidayService *HolidayService, leaveTypeConfigSvc *LeaveTypeConfigService) *LeaveService {
+	auditLogger *logger.AuditLogger, holidayService *HolidayService, leaveTypeConfigSvc *LeaveTypeConfigService, departmentSvc *DepartmentService) *LeaveService {
 	return &LeaveService{
 		db:                 db,
 		calculator:         calculator,
 		auditLogger:        auditLogger,
 		holidayService:     holidayService,
 		leaveTypeConfigSvc: leaveTypeConfigSvc,
-		workflowSvc:        NewWorkflowService(db),
+		workflowSvc:        NewWorkflowService(db, departmentSvc),
+		departmentSvc:      departmentSvc,
 	}
 }
 
@@ -546,6 +548,7 @@ func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment str
 func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year string) ([]models.LeaveRequest, error) {
 	var requests []models.LeaveRequest
 
+	// Start with requests from direct reports
 	query := ls.db.Preload("User").
 		Preload("Approver").
 		Preload("WorkflowState.CurrentStep").
@@ -560,8 +563,60 @@ func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year s
 		query = query.Where("EXTRACT(YEAR FROM leave_requests.start_date) = ?", year)
 	}
 
-	err := query.Order("leave_requests.created_at DESC").Find(&requests).Error
-	return requests, err
+	if err := query.Order("leave_requests.created_at DESC").Find(&requests).Error; err != nil {
+		return nil, err
+	}
+
+	// Also include department-wide requests if the user is HOD or acting HOD
+	if ls.departmentSvc != nil {
+		// Check if user is HOD of any department
+		var departments []models.Department
+		ls.db.Where("hod_id = ?", managerID).Find(&departments)
+
+		// Check if user is acting HOD of any department
+		actingDeptIDs, _ := ls.departmentSvc.IsUserActingHOD(managerID)
+
+		// Collect all department IDs
+		var deptIDs []uuid.UUID
+		for _, dept := range departments {
+			deptIDs = append(deptIDs, dept.ID)
+		}
+		deptIDs = append(deptIDs, actingDeptIDs...)
+
+		// Fetch department members' requests (avoiding duplicates)
+		if len(deptIDs) > 0 {
+			var deptRequests []models.LeaveRequest
+			deptQuery := ls.db.Preload("User").
+				Preload("Approver").
+				Preload("WorkflowState.CurrentStep").
+				Joins("JOIN users ON users.id = leave_requests.user_id").
+				Where("users.department_id IN ?", deptIDs).
+				Where("users.id != ?", managerID) // Exclude own requests
+
+			if status != "" {
+				deptQuery = deptQuery.Where("leave_requests.status = ?", status)
+			}
+			if year != "" {
+				deptQuery = deptQuery.Where("EXTRACT(YEAR FROM leave_requests.start_date) = ?", year)
+			}
+
+			if err := deptQuery.Order("leave_requests.created_at DESC").Find(&deptRequests).Error; err == nil {
+				// Merge and deduplicate
+				seen := make(map[uuid.UUID]bool)
+				for _, r := range requests {
+					seen[r.ID] = true
+				}
+				for _, r := range deptRequests {
+					if !seen[r.ID] {
+						requests = append(requests, r)
+						seen[r.ID] = true
+					}
+				}
+			}
+		}
+	}
+
+	return requests, nil
 }
 
 func (ls *LeaveService) GetUserLeaveBalance(userID uuid.UUID, year string) (map[string]interface{}, error) {
@@ -609,7 +664,7 @@ func (ls *LeaveService) GetAllLeaveRequests(status, year, department string) ([]
 
 	if department != "" {
 		query = query.Joins("JOIN users ON users.id = leave_requests.user_id").
-			Where("users.department = ?", department)
+			Where("users.department_id = ?", department)
 	}
 
 	err := query.Order("created_at DESC").Find(&requests).Error
@@ -675,7 +730,7 @@ func (ls *LeaveService) GeneratePayrollReport(month, year string) ([]byte, error
 	}
 
 	// Build CSV header dynamically
-	csv := "Employee ID,Email,First Name,Last Name,Department,Position"
+	csv := "Employee ID,Email,First Name,Last Name,Position"
 	for _, lt := range leaveTypes {
 		// Capitalize first letter for header (e.g., "Annual Leave")
 		header := string(lt)
@@ -713,12 +768,11 @@ func (ls *LeaveService) GeneratePayrollReport(month, year string) ([]byte, error
 		}
 
 		// Build row
-		row := fmt.Sprintf("%s,%s,%s,%s,%s,%s",
+		row := fmt.Sprintf("%s,%s,%s,%s,%s",
 			user.ID.String(),
 			user.Email,
 			user.FirstName,
 			user.LastName,
-			user.Department,
 			user.Position,
 		)
 

@@ -25,7 +25,8 @@ func NewDatabase(cfg *config.DatabaseConfig, gormLogger logger.Interface) (*Data
 	// Retry connection to handle cases where Postgres is up but not yet ready for connections
 	for i := 0; i < 5; i++ {
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-			Logger: gormLogger,
+			Logger:                                   gormLogger,
+			DisableForeignKeyConstraintWhenMigrating: true,
 			NowFunc: func() time.Time {
 				return time.Now().UTC()
 			},
@@ -75,7 +76,6 @@ func (d *Database) CreateSuperAdmin(email, passwordHash, firstName, lastName str
 		FirstName:    firstName,
 		LastName:     lastName,
 		Role:         models.RoleSysAdmin,
-		Department:   "IT",
 		Position:     "System Administrator",
 		JoinedDate:   time.Now(),
 		IsConfirmed:  true,

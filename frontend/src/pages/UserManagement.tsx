@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Plus, Search, MoreVertical, Shield, UserCheck, UserX } from 'lucide-react';
 import api from '../services/api';
-import type { User, UserRole } from '../types';
+import type { User, UserRole, Department } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -135,7 +135,7 @@ const UserManagement: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-slate-600">
-                                            {user.department || '-'}
+                                            {user.department_ref?.name || '-'}
                                         </td>
                                         <td className="px-6 py-4">
                                             {user.is_active !== false ? (
@@ -193,24 +193,30 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess, currentUserRole }: { isOp
     const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm();
     const [error, setError] = useState('');
     const [managers, setManagers] = useState<User[]>([]);
+    const [departments, setDepartments] = useState<Department[]>([]);
 
     useEffect(() => {
-        const fetchManagers = async () => {
+        const fetchData = async () => {
             try {
-                const response = await api.get('/hr/users');
-                if (Array.isArray(response.data)) {
-                    // Filter users who can be managers (manager, hr, admin roles)
-                    const potentialManagers = response.data.filter((u: User) =>
+                const [usersRes, deptsRes] = await Promise.all([
+                    api.get('/hr/users'),
+                    api.get('/hr/departments')
+                ]);
+                if (Array.isArray(usersRes.data)) {
+                    const potentialManagers = usersRes.data.filter((u: User) =>
                         ['manager', 'hod', 'hr', 'admin', 'sysadmin'].includes(u.role)
                     );
                     setManagers(potentialManagers);
                 }
+                if (Array.isArray(deptsRes.data)) {
+                    setDepartments(deptsRes.data);
+                }
             } catch (err) {
-                console.error("Failed to fetch managers", err);
+                console.error("Failed to fetch data", err);
             }
         };
         if (isOpen) {
-            fetchManagers();
+            fetchData();
         }
     }, [isOpen]);
 
@@ -281,7 +287,15 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess, currentUserRole }: { isOp
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                         <label className="text-sm font-medium text-slate-700">Department</label>
-                        <Input {...register('department', { required: 'Required' })} error={errors.department?.message as string} />
+                        <select
+                            className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                            {...register('department_id')}
+                        >
+                            <option value="">No Department</option>
+                            {departments.map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                        </select>
                     </div>
                     <div className="space-y-1">
                         <label className="text-sm font-medium text-slate-700">Position</label>
@@ -298,7 +312,7 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess, currentUserRole }: { isOp
                         <option value="">No Manager (HR will approve leaves)</option>
                         {managers.map(m => (
                             <option key={m.id} value={m.id}>
-                                {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department ? ` (${m.department})` : ''}
+                                {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department_ref ? ` (${m.department_ref.name})` : ''}
                             </option>
                         ))}
                     </select>
@@ -324,14 +338,15 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
 
     const [fullUser, setFullUser] = useState<User>(user);
     const [loadingDetails, setLoadingDetails] = useState(false);
+    const [departments, setDepartments] = useState<Department[]>([]);
 
     const fetchUserAndManagers = async () => {
         setLoadingDetails(true);
         try {
-            // Fetch everything first to prevent race conditions with form reset
-            const [userFullResponse, allUsersResponse] = await Promise.all([
+            const [userFullResponse, allUsersResponse, deptsResponse] = await Promise.all([
                 api.get(`/hr/users/${user.id}`),
-                api.get('/hr/users')
+                api.get('/hr/users'),
+                api.get('/hr/departments')
             ]);
 
             const userData = userFullResponse.data;
@@ -344,6 +359,10 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
                 setManagers(potentialManagers);
             }
 
+            if (Array.isArray(deptsResponse.data)) {
+                setDepartments(deptsResponse.data);
+            }
+
             // Update form with latest details
             // Doing this after fetching managers ensures the select options are ready
             // (or at least collected in the same render batch)
@@ -351,7 +370,7 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
                 first_name: userData.first_name,
                 last_name: userData.last_name,
                 role: userData.role,
-                department: userData.department || '',
+                department_id: userData.department_id || '',
                 position: userData.position || '',
                 manager_id: userData.manager_id || '',
             });
@@ -374,7 +393,7 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
             first_name: user.first_name,
             last_name: user.last_name,
             role: user.role,
-            department: user.department || '',
+            department_id: user.department_id || '',
             position: user.position || '',
             manager_id: (user as any).manager_id || '',
         }
@@ -390,7 +409,7 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
                 first_name: data.first_name,
                 last_name: data.last_name,
                 role: data.role,
-                department: data.department,
+                department_id: data.department_id || null,
                 position: data.position,
                 manager_id: data.manager_id || null,
             });
@@ -522,10 +541,15 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
                             </div>
                             <div className="space-y-1">
                                 <label className="text-sm font-medium text-slate-700">Department</label>
-                                <input
-                                    {...detailsForm.register("department")}
+                                <select
+                                    {...detailsForm.register("department_id")}
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
-                                />
+                                >
+                                    <option value="">No Department</option>
+                                    {departments.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                         <div className="space-y-1">
@@ -544,7 +568,7 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
                                 <option value="">No Manager (HR will approve leaves)</option>
                                 {managers.map(m => (
                                     <option key={m.id} value={m.id}>
-                                        {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department ? ` (${m.department})` : ''}
+                                        {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department_ref ? ` (${m.department_ref.name})` : ''}
                                     </option>
                                 ))}
                             </select>

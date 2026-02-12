@@ -6,7 +6,8 @@ export interface User {
     first_name: string;
     last_name: string;
     role: UserRole;
-    department?: string;
+    department_id?: string;
+    department_ref?: Department;
     position?: string;
     manager_id?: string;
     joined_date: string;
@@ -109,3 +110,28 @@ export interface LeaveRequestWorkflowState {
     updated_at: string;
 }
 
+// Department types
+export interface Department {
+    id: string;
+    name: string;
+    hod_id?: string;
+    hod?: User;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface HODDelegation {
+    id: string;
+    department_id: string;
+    department?: Department;
+    delegator_id: string;
+    delegator?: User;
+    delegate_id: string;
+    delegate?: User;
+    start_date: string;
+    end_date: string;
+    reason: string;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}

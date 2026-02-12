@@ -58,7 +58,7 @@ type CreateUserRequest struct {
 	FirstName       string          `json:"first_name" binding:"required"`
 	LastName        string          `json:"last_name" binding:"required"`
 	Role            models.UserRole `json:"role" binding:"required"`
-	Department      string          `json:"department" binding:"required"`
+	DepartmentID    *uuid.UUID      `json:"department_id"`
 	Position        string          `json:"position" binding:"required"`
 	ManagerID       *uuid.UUID      `json:"manager_id"`
 	JoinedDate      string          `json:"joined_date" binding:"required"`
@@ -101,7 +101,7 @@ func (h *HRHandler) CreateUser(c *gin.Context) {
 		FirstName:    req.FirstName,
 		LastName:     req.LastName,
 		Role:         req.Role,
-		Department:   req.Department,
+		DepartmentID: req.DepartmentID,
 		Position:     req.Position,
 		ManagerID:    req.ManagerID,
 		IsActive:     true,
@@ -313,12 +313,12 @@ func (h *HRHandler) ConfirmProbation(c *gin.Context) {
 }
 
 type UpdateUserRequest struct {
-	FirstName  string          `json:"first_name"`
-	LastName   string          `json:"last_name"`
-	Role       models.UserRole `json:"role"`
-	Department string          `json:"department"`
-	Position   string          `json:"position"`
-	ManagerID  *uuid.UUID      `json:"manager_id"`
+	FirstName    string          `json:"first_name"`
+	LastName     string          `json:"last_name"`
+	Role         models.UserRole `json:"role"`
+	DepartmentID *uuid.UUID      `json:"department_id"`
+	Position     string          `json:"position"`
+	ManagerID    *uuid.UUID      `json:"manager_id"`
 }
 
 func (h *HRHandler) UpdateUser(c *gin.Context) {
@@ -359,8 +359,8 @@ func (h *HRHandler) UpdateUser(c *gin.Context) {
 	if req.Role != "" {
 		user.Role = req.Role
 	}
-	if req.Department != "" {
-		user.Department = req.Department
+	if req.DepartmentID != nil {
+		user.DepartmentID = req.DepartmentID
 	}
 	if req.Position != "" {
 		user.Position = req.Position

@@ -25,7 +25,8 @@ type User struct {
 	FirstName         string         `gorm:"not null" json:"first_name"`
 	LastName          string         `gorm:"not null" json:"last_name"`
 	Role              UserRole       `gorm:"type:varchar(20);not null" json:"role"`
-	Department        string         `json:"department"`
+	DepartmentID      *uuid.UUID     `json:"department_id"`
+	DepartmentRef     *Department    `gorm:"foreignKey:DepartmentID" json:"department_ref,omitempty"`
 	Position          string         `json:"position"`
 	ManagerID         *uuid.UUID     `json:"manager_id"`
 	Manager           *User          `gorm:"foreignKey:ManagerID" json:"manager,omitempty"`

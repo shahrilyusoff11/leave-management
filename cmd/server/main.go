@@ -67,14 +67,16 @@ func main() {
 		appLogger.Error("Failed to seed leave type configs", zap.Error(err))
 	}
 
-	// Seed default workflows if none exist
-	workflowService := services.NewWorkflowService(db.DB)
+	// Initialize department service first (needed by others)
+	departmentService := services.NewDepartmentService(db.DB)
+
+	workflowService := services.NewWorkflowService(db.DB, departmentService)
 	if err := workflowService.SeedDefaultWorkflows(); err != nil {
 		appLogger.Error("Failed to seed default workflows", zap.Error(err))
 	}
 
 	leaveCalculator := services.NewLeaveCalculator(holidayService, leaveTypeConfigService)
-	leaveService := services.NewLeaveService(db.DB, leaveCalculator, auditLogger, holidayService, leaveTypeConfigService)
+	leaveService := services.NewLeaveService(db.DB, leaveCalculator, auditLogger, holidayService, leaveTypeConfigService, departmentService)
 	userService := services.NewUserService(db.DB, auditLogger, leaveTypeConfigService, leaveCalculator)
 	configService := services.NewConfigService(db.DB) // Initialize config service with DB
 	auditService := services.NewAuditService(db.DB)   // Initialize audit service with DB
@@ -101,6 +103,7 @@ func main() {
 
 	adminHandler := handlers.NewAdminHandler(holidayService, configService, leaveService, auditService, leaveTypeConfigService)
 	uploadHandler := handlers.NewUploadHandler()
+	departmentHandler := handlers.NewDepartmentHandler(departmentService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtManager)
@@ -188,6 +191,15 @@ func main() {
 			hr.PUT("/users/:id/leave-balance", hrHandler.UpdateLeaveBalance)
 			hr.GET("/leave-requests", hrHandler.GetLeaveRequests)
 			hr.GET("/payroll-report", hrHandler.ExportPayrollReport)
+			// Department routes
+			hr.GET("/departments", departmentHandler.GetDepartments)
+			hr.GET("/departments/:id", departmentHandler.GetDepartment)
+			hr.POST("/departments", departmentHandler.CreateDepartment)
+			hr.PUT("/departments/:id", departmentHandler.UpdateDepartment)
+			hr.DELETE("/departments/:id", departmentHandler.DeleteDepartment)
+			hr.POST("/departments/:id/delegations", departmentHandler.CreateHODDelegation)
+			hr.GET("/departments/:id/delegations", departmentHandler.GetDelegations)
+			hr.DELETE("/departments/delegations/:delegationId", departmentHandler.DeleteHODDelegation)
 		}
 
 		// Admin routes

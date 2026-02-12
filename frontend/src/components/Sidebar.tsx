@@ -107,10 +107,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <div className="p-4 mx-4 mt-4 rounded-xl bg-slate-50 border border-slate-100">
                         <p className="font-semibold text-sm text-slate-900">{user?.first_name} {user?.last_name}</p>
                         <p className="text-xs text-slate-500">{getRoleLabel(user?.role)}</p>
-                        {user?.department && (
+                        {(user as any)?.department_ref?.name && (
                             <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                                 <Building className="h-3 w-3" />
-                                {user.department}
+                                {(user as any).department_ref.name}
                             </p>
                         )}
                     </div>
@@ -137,6 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                             <>
                                 <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">HR Administration</div>
                                 <NavItem to="/users" icon={Users}>User Management</NavItem>
+                                <NavItem to="/departments" icon={Building}>Departments</NavItem>
                                 <NavItem to="/hr-leaves" icon={CalendarDays}>All Leave Requests</NavItem>
                                 <NavItem to="/reports" icon={FileText}>Reports</NavItem>
                             </>

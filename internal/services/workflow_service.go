@@ -12,11 +12,12 @@ import (
 
 // WorkflowService handles leave workflow operations
 type WorkflowService struct {
-	db *gorm.DB
+	db            *gorm.DB
+	departmentSvc *DepartmentService
 }
 
-func NewWorkflowService(db *gorm.DB) *WorkflowService {
-	return &WorkflowService{db: db}
+func NewWorkflowService(db *gorm.DB, departmentSvc *DepartmentService) *WorkflowService {
+	return &WorkflowService{db: db, departmentSvc: departmentSvc}
 }
 
 // GetWorkflowForLeaveType returns the active workflow configuration for a leave type (used at runtime)
@@ -412,12 +413,31 @@ func (s *WorkflowService) convertLeaveType(leaveRequestID uuid.UUID, newType mod
 	return s.ConvertLeaveType(leaveRequestID, newType, uuid.Nil, "Auto-converted due to timeout")
 }
 
-// GetResponsibleUsers returns users who can act on the current step
+// GetResponsibleUsers returns users who can act on the current step.
+// For HOD steps, it resolves the department's HOD (or acting HOD via delegation).
 func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflowState) ([]models.User, error) {
 	if state.CurrentStep == nil {
 		return nil, errors.New("no current step")
 	}
 
+	// If the responsible role is HOD, route to the applicant's department HOD
+	if state.CurrentStep.ResponsibleRole == models.RoleHOD && s.departmentSvc != nil {
+		// Get the leave request to find the applicant
+		var leaveRequest models.LeaveRequest
+		if err := s.db.Preload("User").First(&leaveRequest, "id = ?", state.LeaveRequestID).Error; err != nil {
+			return nil, fmt.Errorf("failed to load leave request: %w", err)
+		}
+
+		if leaveRequest.User.DepartmentID != nil {
+			approver, err := s.departmentSvc.ResolveApproverForDepartment(*leaveRequest.User.DepartmentID)
+			if err == nil && approver != nil {
+				return []models.User{*approver}, nil
+			}
+			// If resolution fails, fall through to role-based lookup
+		}
+	}
+
+	// Default: role-based lookup
 	var users []models.User
 	err := s.db.Where("role = ? AND is_active = ?", state.CurrentStep.ResponsibleRole, true).Find(&users).Error
 	return users, err
