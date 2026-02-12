@@ -93,8 +93,20 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 
 		if user.ManagerID != nil {
 			request.ApproverID = user.ManagerID
+		} else if user.DepartmentID != nil && ls.departmentSvc != nil {
+			// No direct manager — try department HOD
+			approver, err := ls.departmentSvc.ResolveApproverForDepartment(*user.DepartmentID)
+			if err == nil && approver != nil {
+				request.ApproverID = &approver.ID
+			} else {
+				// No HOD for department either, escalate to HR
+				request.Status = models.StatusEscalated
+				request.IsEscalated = true
+				now := time.Now()
+				request.EscalatedAt = &now
+			}
 		} else {
-			// If no manager, escalate to HR
+			// If no manager and no department, escalate to HR
 			request.Status = models.StatusEscalated
 			request.IsEscalated = true
 			now := time.Now()
