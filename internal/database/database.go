@@ -19,15 +19,25 @@ func NewDatabase(cfg *config.DatabaseConfig, gormLogger logger.Interface) (*Data
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: gormLogger,
-		NowFunc: func() time.Time {
-			return time.Now().UTC()
-		},
-	})
+	var db *gorm.DB
+	var err error
+
+	// Retry connection to handle cases where Postgres is up but not yet ready for connections
+	for i := 0; i < 5; i++ {
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+			Logger: gormLogger,
+			NowFunc: func() time.Time {
+				return time.Now().UTC()
+			},
+		})
+		if err == nil {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("failed to connect to database after retries: %w", err)
 	}
 
 	sqlDB, err := db.DB()
