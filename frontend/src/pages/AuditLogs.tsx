@@ -108,9 +108,9 @@ const AuditLogs: React.FC = () => {
                         className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                     >
                         <option value="all">All Methods</option>
-                        <option value="GET">GET</option>
                         <option value="POST">POST</option>
                         <option value="PUT">PUT</option>
+                        <option value="PATCH">PATCH</option>
                         <option value="DELETE">DELETE</option>
                     </select>
                 </div>
@@ -221,8 +221,8 @@ const AuditLogs: React.FC = () => {
                                         key={pageNum}
                                         onClick={() => setCurrentPage(pageNum)}
                                         className={`min-w-[28px] h-7 rounded-md text-xs font-medium transition-colors ${currentPage === pageNum
-                                                ? 'bg-brand-600 text-white'
-                                                : 'text-slate-600 hover:bg-slate-200'
+                                            ? 'bg-brand-600 text-white'
+                                            : 'text-slate-600 hover:bg-slate-200'
                                             }`}
                                     >
                                         {pageNum}
