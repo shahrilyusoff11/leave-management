@@ -282,9 +282,10 @@ func (ls *LeaveService) ApproveLeave(requestID, approverID uuid.UUID, comment st
 
 	// Send Notifications (if transaction succeeded)
 	if err == nil && requestToNotify != nil && ls.emailService != nil {
-		if notificationType == "approve" {
+		switch notificationType {
+		case "approve":
 			_ = ls.emailService.SendApprovalNotification(requestToNotify)
-		} else if notificationType == "action" {
+		case "action":
 			for _, user := range usersToNotify {
 				_ = ls.emailService.SendActionRequiredEmail(user, requestToNotify, "Pending Action")
 			}
@@ -652,9 +653,10 @@ func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment str
 
 	// Send Notifications
 	if err == nil && requestToNotify != nil && ls.emailService != nil {
-		if notificationType == "reject" {
+		switch notificationType {
+		case "reject":
 			_ = ls.emailService.SendRejectionNotification(requestToNotify)
-		} else if notificationType == "action" {
+		case "action":
 			for _, user := range usersToNotify {
 				_ = ls.emailService.SendActionRequiredEmail(user, requestToNotify, "Pending Action")
 			}
