@@ -67,8 +67,7 @@ func (s *WorkflowService) GetWorkflowStep(stepID uuid.UUID) (*models.WorkflowSte
 func (s *WorkflowService) InitializeWorkflowState(leaveRequest *models.LeaveRequest) (*models.LeaveRequestWorkflowState, error) {
 	workflow, err := s.GetWorkflowForLeaveType(leaveRequest.LeaveType)
 	if err != nil {
-		// No workflow configured - use legacy flow
-		return nil, nil
+		return nil, fmt.Errorf("no active workflow configuration found for leave type %s: %w", leaveRequest.LeaveType, err)
 	}
 
 	if workflow.FirstStepID == nil {
@@ -136,9 +135,6 @@ func (s *WorkflowService) CancelWorkflowWithTx(tx *gorm.DB, leaveRequestID uuid.
 	// Get current state
 	var state models.LeaveRequestWorkflowState
 	if err := tx.Preload("CurrentStep").Where("leave_request_id = ?", leaveRequestID).First(&state).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil // No workflow to cancel
-		}
 		return fmt.Errorf("workflow state not found: %w", err)
 	}
 
@@ -270,6 +266,9 @@ func (s *WorkflowService) ProcessActionWithTx(
 	}
 
 	state.UpdatedAt = time.Now()
+
+	// Nil out CurrentStep to ensure GORM updates the ID column and doesn't try to sync with the old loaded struct
+	state.CurrentStep = nil
 
 	if err := tx.Save(&state).Error; err != nil {
 		return nil, err
