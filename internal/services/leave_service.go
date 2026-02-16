@@ -17,6 +17,7 @@ type LeaveService struct {
 	db                 *gorm.DB
 	calculator         *LeaveCalculator
 	auditLogger        *logger.AuditLogger
+	emailService       *EmailService
 	holidayService     *HolidayService
 	leaveTypeConfigSvc *LeaveTypeConfigService
 	workflowSvc        *WorkflowService
@@ -24,11 +25,12 @@ type LeaveService struct {
 }
 
 func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
-	auditLogger *logger.AuditLogger, holidayService *HolidayService, leaveTypeConfigSvc *LeaveTypeConfigService, departmentSvc *DepartmentService) *LeaveService {
+	auditLogger *logger.AuditLogger, emailService *EmailService, holidayService *HolidayService, leaveTypeConfigSvc *LeaveTypeConfigService, departmentSvc *DepartmentService) *LeaveService {
 	return &LeaveService{
 		db:                 db,
 		calculator:         calculator,
 		auditLogger:        auditLogger,
+		emailService:       emailService,
 		holidayService:     holidayService,
 		leaveTypeConfigSvc: leaveTypeConfigSvc,
 		workflowSvc:        NewWorkflowService(db, departmentSvc),
@@ -156,7 +158,11 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 }
 
 func (ls *LeaveService) ApproveLeave(requestID, approverID uuid.UUID, comment string) error {
-	return ls.db.Transaction(func(tx *gorm.DB) error {
+	var requestToNotify *models.LeaveRequest
+	var usersToNotify []models.User
+	var notificationType string // "approve" or "action"
+
+	err := ls.db.Transaction(func(tx *gorm.DB) error {
 		var request models.LeaveRequest
 		if err := tx.Preload("User").First(&request, "id = ?", requestID).Error; err != nil {
 			return err
@@ -212,6 +218,24 @@ func (ls *LeaveService) ApproveLeave(requestID, approverID uuid.UUID, comment st
 			return err
 		}
 
+		// Create Chronology Entry
+		chronology := models.Chronology{
+			ID:             uuid.New(),
+			LeaveRequestID: requestID,
+			Action:         "approved",
+			ActorID:        approverID,
+			Comment:        comment,
+			Metadata: models.JSONMap{
+				"step_name":  workflowState.CurrentStep.StepName,
+				"step_label": workflowState.CurrentStep.StepLabel,
+				"is_final":   updatedState.IsComplete,
+			},
+			CreatedAt: time.Now(),
+		}
+		if err := tx.Create(&chronology).Error; err != nil {
+			return err
+		}
+
 		// Update Request Status if Workflow Completed
 		if updatedState.IsComplete {
 			request.Status = updatedState.FinalStatus
@@ -237,8 +261,37 @@ func (ls *LeaveService) ApproveLeave(requestID, approverID uuid.UUID, comment st
 			}
 		}
 
+		// Prepare for notifications (outside transaction)
+		if updatedState.IsComplete {
+			if updatedState.FinalStatus == models.StatusApproved {
+				requestToNotify = &request
+				notificationType = "approve"
+			}
+		} else if updatedState.CurrentStep != nil {
+			// Workflow continues
+			nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
+			if err == nil {
+				usersToNotify = nextResponsibles
+				requestToNotify = &request
+				notificationType = "action"
+			}
+		}
+
 		return nil
 	})
+
+	// Send Notifications (if transaction succeeded)
+	if err == nil && requestToNotify != nil && ls.emailService != nil {
+		if notificationType == "approve" {
+			_ = ls.emailService.SendApprovalNotification(requestToNotify)
+		} else if notificationType == "action" {
+			for _, user := range usersToNotify {
+				_ = ls.emailService.SendActionRequiredEmail(user, requestToNotify, "Pending Action")
+			}
+		}
+	}
+
+	return err
 }
 
 // Helper to deduct balance (extracted for clarity)
@@ -487,7 +540,11 @@ func (ls *LeaveService) CancelLeaveRequest(requestID, userID uuid.UUID) error {
 }
 
 func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment string) error {
-	return ls.db.Transaction(func(tx *gorm.DB) error {
+	var requestToNotify *models.LeaveRequest
+	var usersToNotify []models.User
+	var notificationType string // "reject" or "action"
+
+	err := ls.db.Transaction(func(tx *gorm.DB) error {
 		var request models.LeaveRequest
 		if err := tx.Preload("User").First(&request, "id = ?", requestID).Error; err != nil {
 			return err
@@ -544,6 +601,24 @@ func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment str
 			return err
 		}
 
+		// Create Chronology Entry
+		chronology := models.Chronology{
+			ID:             uuid.New(),
+			LeaveRequestID: requestID,
+			Action:         "rejected",
+			ActorID:        approverID,
+			Comment:        comment,
+			Metadata: models.JSONMap{
+				"step_name":  workflowState.CurrentStep.StepName,
+				"step_label": workflowState.CurrentStep.StepLabel,
+				"is_final":   updatedState.IsComplete,
+			},
+			CreatedAt: time.Now(),
+		}
+		if err := tx.Create(&chronology).Error; err != nil {
+			return err
+		}
+
 		// Update Request Status if Workflow Completed
 		if updatedState.IsComplete {
 			request.Status = updatedState.FinalStatus
@@ -559,8 +634,34 @@ func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment str
 			}
 		}
 
+		// Prepare notifications
+		if updatedState.IsComplete && updatedState.FinalStatus == models.StatusRejected {
+			requestToNotify = &request
+			notificationType = "reject"
+		} else if updatedState.CurrentStep != nil {
+			nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
+			if err == nil {
+				usersToNotify = nextResponsibles
+				requestToNotify = &request
+				notificationType = "action"
+			}
+		}
+
 		return nil
 	})
+
+	// Send Notifications
+	if err == nil && requestToNotify != nil && ls.emailService != nil {
+		if notificationType == "reject" {
+			_ = ls.emailService.SendRejectionNotification(requestToNotify)
+		} else if notificationType == "action" {
+			for _, user := range usersToNotify {
+				_ = ls.emailService.SendActionRequiredEmail(user, requestToNotify, "Pending Action")
+			}
+		}
+	}
+
+	return err
 }
 
 func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year string) ([]models.LeaveRequest, error) {
@@ -652,6 +753,12 @@ func (ls *LeaveService) GetUserLeaveBalance(userID uuid.UUID, year string) (map[
 
 	// Calculate available balance for each type
 	result := make(map[string]interface{})
+	// ... rest of GetUserLeaveBalance logic if cut off ...
+	// Wait, I need to check if GetUserLeaveBalance was cut off.
+	// Assuming I am appending NEW methods, I should append after the last known method.
+	// But replace_file_content with EndLine 1007 suggests I am replacing the end?
+	// I will use append (StartLine = line count + 1).
+
 	for _, balance := range balances {
 		available := balance.TotalEntitlement + balance.CarriedForward + balance.Adjusted - balance.Used
 		result[string(balance.LeaveType)] = map[string]interface{}{

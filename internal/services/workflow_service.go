@@ -590,19 +590,17 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 		UpdatedAt:    time.Now(),
 	}
 
-	elType := models.LeaveTypeEmergency
 	steps := []models.WorkflowStep{
 		{
-			ID:                hodStepID,
-			WorkflowID:        workflowID,
-			StepOrder:         1,
-			StepName:          "hod_approval",
-			StepLabel:         "HOD Approval",
-			ResponsibleRole:   models.RoleHOD,
-			ActionType:        models.ActionApprove,
-			TimeoutDays:       7,
-			TimeoutAction:     models.TimeoutConvert,
-			ConvertToType:     &elType,
+			ID:              hodStepID,
+			WorkflowID:      workflowID,
+			StepOrder:       1,
+			StepName:        "hod_approval",
+			StepLabel:       "HOD Approval",
+			ResponsibleRole: models.RoleHOD,
+			ActionType:      models.ActionApprove,
+			TimeoutDays:     7,
+			// Simplified: No auto-actions, just wait for approval
 			NextStepOnApprove: &approvedStepID,
 			NotifyRoles:       models.JSONArray{"manager"},
 			CreatedAt:         time.Now(),
@@ -655,15 +653,15 @@ func (s *WorkflowService) seedEmergencyLeaveWorkflow() error {
 
 	steps := []models.WorkflowStep{
 		{
-			ID:                hodStepID,
-			WorkflowID:        workflowID,
-			StepOrder:         1,
-			StepName:          "hod_approval",
-			StepLabel:         "HOD Approval",
-			ResponsibleRole:   models.RoleHOD,
-			ActionType:        models.ActionApprove,
-			TimeoutDays:       7,
-			TimeoutAction:     models.TimeoutEscalate,
+			ID:              hodStepID,
+			WorkflowID:      workflowID,
+			StepOrder:       1,
+			StepName:        "hod_approval",
+			StepLabel:       "HOD Approval",
+			ResponsibleRole: models.RoleHOD,
+			ActionType:      models.ActionApprove,
+			TimeoutDays:     7,
+			// Simplified: No escalation
 			NextStepOnApprove: &hrStepID,
 			NotifyRoles:       models.JSONArray{"manager"},
 			CreatedAt:         time.Now(),

@@ -166,3 +166,61 @@ func (es *EmailService) sendEmail(to, subject, body string) error {
 
 	return es.dialer.DialAndSend(m)
 }
+
+func (es *EmailService) SendRejectionNotification(request *models.LeaveRequest) error {
+	subject := "Update on your Leave Request"
+
+	body := fmt.Sprintf(`
+	Dear %s %s,
+	
+	Your leave request has been rejected.
+	
+	Leave Type: %s
+	Dates: %s to %s
+	Reason for Rejection: %s
+	
+	Please contact your manager or HR for more details found in the system.
+	
+	Regards,
+	Leave Management System
+	`,
+		request.User.FirstName, request.User.LastName,
+		strings.Title(string(request.LeaveType)),
+		request.StartDate.Format("January 2, 2006"),
+		request.EndDate.Format("January 2, 2006"),
+		request.RejectionReason)
+
+	return es.sendEmail(request.User.Email, subject, body)
+}
+
+func (es *EmailService) SendActionRequiredEmail(user models.User, request *models.LeaveRequest, stepName string) error {
+	subject := fmt.Sprintf("Action Required: Leave Request from %s %s",
+		request.User.FirstName, request.User.LastName)
+
+	body := fmt.Sprintf(`
+	Dear %s %s,
+	
+	A leave request requires your attention (%s):
+	
+	Employee: %s %s
+	Leave Type: %s
+	Dates: %s to %s
+	Duration: %.1f days
+	Reason: %s
+	
+	Please log in to the Leave Management System to review and take action.
+	
+	Regards,
+	Leave Management System
+	`,
+		user.FirstName, user.LastName,
+		stepName,
+		request.User.FirstName, request.User.LastName,
+		strings.Title(string(request.LeaveType)),
+		request.StartDate.Format("January 2, 2006"),
+		request.EndDate.Format("January 2, 2006"),
+		request.DurationDays,
+		request.Reason)
+
+	return es.sendEmail(user.Email, subject, body)
+}

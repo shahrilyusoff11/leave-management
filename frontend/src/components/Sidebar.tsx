@@ -26,7 +26,7 @@ interface SidebarProps {
 
 // Role hierarchy helpers
 const isManager = (role?: UserRole) =>
-    role === 'manager' || role === 'hod' || role === 'hr' || role === 'admin' || role === 'sysadmin';
+    role === 'manager' || role === 'hod'; // Removed 'hr', 'admin', 'sysadmin' to declutter for them
 
 const isHR = (role?: UserRole) =>
     role === 'hr' || role === 'admin' || role === 'sysadmin';

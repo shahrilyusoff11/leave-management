@@ -1,0 +1,186 @@
+package services
+
+import (
+	"leave-management-system/internal/models"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+func TestChronologyAndBalance(t *testing.T) {
+	// Clean up previous test db
+	os.Remove("test_chrono.db")
+
+	db, err := gorm.Open(sqlite.Open("test_chrono.db"), &gorm.Config{
+		// Low-level logger to suppress excessive output if needed, or default
+	})
+	if err != nil {
+		t.Fatalf("failed to connect database: %v", err)
+	}
+
+	// AutoMigrate
+	err = db.AutoMigrate(
+		&models.User{},
+		&models.LeaveTypeConfig{},
+		&models.LeaveRequest{},
+		&models.LeaveBalance{},
+		&models.LeaveWorkflow{},
+		&models.WorkflowStep{},
+		&models.LeaveRequestWorkflowState{},
+		&models.Chronology{},
+		&models.Department{},
+	)
+	if err != nil {
+		t.Fatalf("failed to migrate: %v", err)
+	}
+
+	// Services
+	deptSvc := NewDepartmentService(db)
+	workflowSvc := NewWorkflowService(db, deptSvc)
+	// NewLeaveCalculator(holidayService, leaveTypeConfigSvc)
+	calculator := NewLeaveCalculator(nil, nil)
+	leaveSvc := NewLeaveService(db, calculator, nil, nil, nil, nil, deptSvc)
+
+	// 1. Setup Data
+	userID := uuid.New()
+	managerID := uuid.New()
+	hrID := uuid.New()
+
+	user := models.User{ID: userID, Email: "emp@test.com", Role: models.RoleStaff, FirstName: "Emp", LastName: "Test", JoinedDate: time.Now().AddDate(-1, 0, 0)}
+	manager := models.User{ID: managerID, Email: "mgr@test.com", Role: models.RoleHOD, FirstName: "Mgr", LastName: "Test"}
+	hr := models.User{ID: hrID, Email: "hr@test.com", Role: models.RoleHR, FirstName: "HR", LastName: "Test"}
+
+	db.Create(&user)
+	db.Create(&manager)
+	db.Create(&hr)
+
+	// Seed Leave Balance (Total 14, Used 0)
+	balance := models.LeaveBalance{
+		ID:               uuid.New(),
+		UserID:           userID,
+		LeaveType:        models.LeaveTypeSick,
+		Year:             time.Now().Year(),
+		TotalEntitlement: 14,
+		Used:             0,
+	}
+	db.Create(&balance)
+
+	// 2. Create Workflow (HOD -> HR)
+	wfID := uuid.New()
+	step1ID := uuid.New()
+	step2ID := uuid.New()
+
+	// Create steps
+	step1 := models.WorkflowStep{
+		ID:                step1ID,
+		WorkflowID:        wfID,
+		StepName:          "hod_approval",
+		StepLabel:         "HOD Approval",
+		StepOrder:         1,
+		ResponsibleRole:   models.RoleHOD,
+		ActionType:        models.ActionApprove,
+		NextStepOnApprove: &step2ID,
+	}
+	step2 := models.WorkflowStep{
+		ID:              step2ID,
+		WorkflowID:      wfID,
+		StepName:        "hr_review",
+		StepLabel:       "HR Review",
+		StepOrder:       2,
+		ResponsibleRole: models.RoleHR,
+		ActionType:      models.ActionApprove,
+		IsTerminal:      true,
+		TerminalStatus:  models.StatusApproved,
+	}
+
+	workflow := models.LeaveWorkflow{
+		ID:           wfID,
+		LeaveType:    models.LeaveTypeSick,
+		WorkflowName: "Sick Leave Flow",
+		FirstStepID:  &step1ID,
+		IsActive:     true,
+	}
+
+	db.Create(&workflow)
+	db.Create(&step1)
+	db.Create(&step2)
+
+	// 3. Create Request
+	reqID := uuid.New()
+	request := models.LeaveRequest{
+		ID:           reqID,
+		UserID:       userID,
+		LeaveType:    models.LeaveTypeSick,
+		StartDate:    time.Now().Add(24 * time.Hour),
+		EndDate:      time.Now().Add(48 * time.Hour), // 2 days?
+		DurationDays: 2.0,
+		Status:       models.StatusPending,
+		CreatedAt:    time.Now(),
+	}
+	// We create request manually to bypass calculator validation in CreateLeaveRequest for this test
+	// But we need to InitializeWorkflowState
+	db.Create(&request)
+
+	state, err := workflowSvc.InitializeWorkflowState(&request)
+	if err != nil {
+		t.Fatalf("Init workflow failed: %v", err)
+	}
+	request.WorkflowStateID = &state.ID
+	db.Save(&request)
+
+	// 4. Step 1: HOD Approve
+	err = leaveSvc.ApproveLeave(reqID, managerID, "HOD Approved")
+	if err != nil {
+		t.Fatalf("HOD Approve failed: %v", err)
+	}
+
+	// Verify Chronology for HOD
+	var chrono1 models.Chronology
+	if err := db.Where("leave_request_id = ? AND action = ?", reqID, "approved").First(&chrono1).Error; err != nil {
+		t.Fatalf("Chronology for HOD approval not found: %v", err)
+	}
+	if chrono1.ActorID != managerID {
+		t.Errorf("Chronology actor wrong. Expected %v, got %v", managerID, chrono1.ActorID)
+	}
+	t.Log("Verified HOD Approval Chronology")
+
+	// Verify Balance NOT deducted (pending final)
+	var b models.LeaveBalance
+	db.First(&b, "id = ?", balance.ID)
+	if b.Used != 0 {
+		t.Errorf("Balance should not be deducted yet. Used: %v", b.Used)
+	}
+
+	// 5. Step 2: HR Approve
+	// Reload state to get current step
+	db.First(state, "id = ?", state.ID)
+	// Manually update struct for test context if needed, but ApproveLeave fetches it
+
+	err = leaveSvc.ApproveLeave(reqID, hrID, "HR Approved")
+	if err != nil {
+		t.Fatalf("HR Approve failed: %v", err)
+	}
+
+	// Verify Chronology for HR
+	var chronos []models.Chronology
+	db.Where("leave_request_id = ? AND action = ?", reqID, "approved").Order("created_at asc").Find(&chronos)
+	if len(chronos) != 2 {
+		t.Errorf("Expected 2 approval chronologies, got %d", len(chronos))
+	} else {
+		if chronos[1].ActorID != hrID {
+			t.Errorf("Second chronology actor wrong. Expected %v, got %v", hrID, chronos[1].ActorID)
+		}
+	}
+	t.Log("Verified HR Approval Chronology")
+
+	// Verify Balance DEDUCTED
+	db.First(&b, "id = ?", balance.ID)
+	if b.Used != 2.0 {
+		t.Errorf("Balance should be deducted. Expected 2.0, got %v", b.Used)
+	}
+	t.Log("Verified Balance Deduction")
+}

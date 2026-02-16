@@ -75,12 +75,6 @@ func main() {
 		appLogger.Error("Failed to seed default workflows", zap.Error(err))
 	}
 
-	leaveCalculator := services.NewLeaveCalculator(holidayService, leaveTypeConfigService)
-	leaveService := services.NewLeaveService(db.DB, leaveCalculator, auditLogger, holidayService, leaveTypeConfigService, departmentService)
-	userService := services.NewUserService(db.DB, auditLogger, leaveTypeConfigService, leaveCalculator)
-	configService := services.NewConfigService(db.DB) // Initialize config service with DB
-	auditService := services.NewAuditService(db.DB)   // Initialize audit service with DB
-
 	emailService := services.NewEmailService(
 		cfg.Email.Host,
 		cfg.Email.Port,
@@ -88,6 +82,12 @@ func main() {
 		cfg.Email.Password,
 		cfg.Email.From,
 	)
+
+	leaveCalculator := services.NewLeaveCalculator(holidayService, leaveTypeConfigService)
+	leaveService := services.NewLeaveService(db.DB, leaveCalculator, auditLogger, emailService, holidayService, leaveTypeConfigService, departmentService)
+	userService := services.NewUserService(db.DB, auditLogger, leaveTypeConfigService, leaveCalculator)
+	configService := services.NewConfigService(db.DB) // Initialize config service with DB
+	auditService := services.NewAuditService(db.DB)   // Initialize audit service with DB
 
 	// Initialize cron jobs
 	cronJobs := cron.NewCronJobs(leaveService, emailService, workflowService, appLogger)
