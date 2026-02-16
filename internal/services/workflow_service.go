@@ -434,7 +434,14 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 		return nil, errors.New("no current step")
 	}
 
-	// If the responsible role is HOD, route to the applicant's department HOD
+	// Helper to fetch admins
+	getAdmins := func() ([]models.User, error) {
+		var admins []models.User
+		err := s.db.Where("role IN ? AND is_active = ?", []models.UserRole{models.RoleAdmin, models.RoleSysAdmin}, true).Find(&admins).Error
+		return admins, err
+	}
+
+	// 1. Handle HOD Role (Department Logic)
 	if state.CurrentStep.ResponsibleRole == models.RoleHOD && s.departmentSvc != nil {
 		// Get the leave request to find the applicant
 		var leaveRequest models.LeaveRequest
@@ -442,44 +449,127 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 			return nil, fmt.Errorf("failed to load leave request: %w", err)
 		}
 
+		// [SMART ROUTING] HOD Self-Approval Bypass
+		// If the applicant IS the HOD (or acting HOD), they cannot approve themselves.
+		// Route to their Reporting Manager instead.
+		if leaveRequest.User.Role == models.RoleHOD {
+			// If they have a direct manager, route to them
+			if leaveRequest.User.ManagerID != nil {
+				// We reuse the Manager Logic below essentially, but let's be explicit
+				// Use DelegationService if available to check if THAT manager delegated
+				if s.delegationSvc != nil {
+					delegate, err := s.delegationSvc.GetActiveDelegation(*leaveRequest.User.ManagerID, time.Now())
+					if err == nil && delegate != nil {
+						return []models.User{*delegate}, nil
+					}
+				}
+				// Fallback to the actual manager
+				var manager models.User
+				if err := s.db.First(&manager, "id = ?", *leaveRequest.User.ManagerID).Error; err == nil {
+					return []models.User{manager}, nil
+				}
+			}
+			// If HOD has no manager (Top Level HOD?), Fallback to Admin
+			return getAdmins()
+		}
+
+		// Normal Staff: Route to Department HOD
 		if leaveRequest.User.DepartmentID != nil {
 			approver, err := s.departmentSvc.ResolveApproverForDepartment(*leaveRequest.User.DepartmentID)
 			if err == nil && approver != nil {
+				// [SMART ROUTING] Final Self-Approval Guard
+				// Even if resolved, ensure it's not the applicant (e.g. data inconsistency)
+				if approver.ID == leaveRequest.UserID {
+					return getAdmins()
+				}
 				return []models.User{*approver}, nil
 			}
 			// If resolution fails, fall through to role-based lookup
 		}
 	}
 
-	// 2. [NEW] Check General Delegation (Acting Manager)
-	// If the responsible role is Manager, we should check if the APPLICANT'S manager has delegated
-	if state.CurrentStep.ResponsibleRole == models.RoleManager && s.delegationSvc != nil {
+	// 2. Handle Manager Role (Direct Supervisor Logic)
+	if state.CurrentStep.ResponsibleRole == models.RoleManager {
 		var leaveRequest models.LeaveRequest
+		// Need to preload User and User.Manager
 		if err := s.db.Preload("User").Preload("User.Manager").First(&leaveRequest, "id = ?", state.LeaveRequestID).Error; err == nil {
+
+			// If user has a manager
 			if leaveRequest.User.ManagerID != nil {
-				// Check if this manager has delegated
-				delegate, err := s.delegationSvc.GetActiveDelegation(*leaveRequest.User.ManagerID, time.Now())
-				if err == nil && delegate != nil {
-					// Return the delegate as the responsible user!
-					return []models.User{*delegate}, nil
+				// Check for Delegation first
+				if s.delegationSvc != nil {
+					delegate, err := s.delegationSvc.GetActiveDelegation(*leaveRequest.User.ManagerID, time.Now())
+					if err == nil && delegate != nil {
+						// Ensure delegate is not the applicant (unlikely but possible)
+						if delegate.ID != leaveRequest.User.ID {
+							return []models.User{*delegate}, nil
+						}
+					}
 				}
-				// If no delegate, but manager exists, return the manager specifically?
-				// The original system logic below returns ALL managers if role=manager.
-				// But `GetTeamLeaveRequests` implies precise routing.
-				// Let's refine this: If a direct manager is assigned, return ONLY that manager (or their delegate).
-				// If no direct manager, fall back to "All Managers".
 
 				// Return the specific manager
 				if leaveRequest.User.Manager != nil {
+					// [SMART ROUTING] Self-Check
+					if leaveRequest.User.Manager.ID == leaveRequest.User.ID {
+						// Should not happen in healthy DB, but safe guard -> Admin
+						return getAdmins()
+					}
 					return []models.User{*leaveRequest.User.Manager}, nil
 				}
+			} else {
+				// [SMART ROUTING] Orphan Manager Fallback
+				// Applicant has NO Manager (Top of hierarchy, e.g. CEO/Director)
+				// Do NOT fall through to "All Managers". Route to Admin.
+				return getAdmins()
 			}
 		}
 	}
 
-	// Default: role-based lookup
+	// 3. Default: Role-based lookup (HR, Admin, etc.)
 	var users []models.User
 	err := s.db.Where("role = ? AND is_active = ?", state.CurrentStep.ResponsibleRole, true).Find(&users).Error
+
+	// [SMART ROUTING] Filter out Applicant from Role-Based Pool
+	// e.g. If HR Manager applies, and step is "HR", they shouldn't be in the list of approvers for themselves.
+	// However, usually we want ANY OTHER HR.
+	if err == nil {
+		var validUsers []models.User
+		requestsSelf := false
+		for _, u := range users {
+			// Handle case where state.LeaveRequestID lookup is needed if not available?
+			// We need the applicant ID.
+			// Let's assume we can get it from the state if we loaded it, but we might not have.
+			// Optimization: We loaded leaveRequest above in specific blocks.
+			// Let's do a quick check if we have the applicant ID locally.
+			// Ensure we filter the applicant.
+
+			// We need to know who the applicant is to filter.
+			// Let's just fetch the request ID if we haven't.
+			// Actually, let's just do a query filter for the list if possible, or filter in memory.
+
+			// Simple in-memory filtering:
+			// We need to fetch the leave request to know the UserID if we are in this block
+			// and haven't fetched it yet (e.g. HR role).
+
+			// Cost is low.
+			var lr models.LeaveRequest
+			s.db.Select("user_id").First(&lr, "id = ?", state.LeaveRequestID)
+
+			if u.ID != lr.UserID {
+				validUsers = append(validUsers, u)
+			} else {
+				requestsSelf = true
+			}
+		}
+
+		// If we filtered everyone out (e.g. the only HR is the applicant), fallback to Admin
+		if len(validUsers) == 0 && requestsSelf {
+			return getAdmins()
+		}
+
+		return validUsers, nil
+	}
+
 	return users, err
 }
 

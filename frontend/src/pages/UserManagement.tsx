@@ -309,7 +309,7 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess, currentUserRole }: { isOp
                         className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                         {...register('manager_id')}
                     >
-                        <option value="">No Manager (HR will approve leaves)</option>
+                        <option value="">No Manager (Routes to System Admin)</option>
                         {managers.map(m => (
                             <option key={m.id} value={m.id}>
                                 {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department_ref ? ` (${m.department_ref.name})` : ''}
@@ -565,7 +565,7 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
                                 {...detailsForm.register("manager_id")}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                             >
-                                <option value="">No Manager (HR will approve leaves)</option>
+                                <option value="">No Manager (Routes to System Admin)</option>
                                 {managers.map(m => (
                                     <option key={m.id} value={m.id}>
                                         {m.first_name} {m.last_name} — {getRoleLabel(m.role as UserRole)}{m.department_ref ? ` (${m.department_ref.name})` : ''}
