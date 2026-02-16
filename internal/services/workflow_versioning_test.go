@@ -20,7 +20,8 @@ func TestWorkflowVersioning(t *testing.T) {
 
 	db.AutoMigrate(&models.LeaveWorkflow{}, &models.WorkflowStep{}, &models.LeaveRequest{}, &models.LeaveRequestWorkflowState{}, &models.User{})
 
-	workflowSvc := NewWorkflowService(db, nil) // no dept svc needed
+	delegationSvc := NewDelegationService(db)
+	workflowSvc := NewWorkflowService(db, nil, delegationSvc) // no dept svc needed
 
 	// 1. Create Initial Workflow (v1)
 	wf := models.LeaveWorkflow{

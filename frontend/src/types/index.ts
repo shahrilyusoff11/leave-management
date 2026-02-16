@@ -136,3 +136,17 @@ export interface HODDelegation {
     created_at: string;
     updated_at: string;
 }
+
+export interface UserDelegation {
+    id: string;
+    delegator_id: string;
+    delegator?: User;
+    delegate_id: string;
+    delegate?: User;
+    start_date: string;
+    end_date: string;
+    status: string;
+    reason: string;
+    created_at: string;
+    updated_at: string;
+}

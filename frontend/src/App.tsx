@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Login';
 import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
+import Delegations from './pages/Delegations';
 import RequestLeave from './pages/RequestLeave';
 import MyLeaves from './pages/MyLeaves';
 import TeamLeaves from './pages/TeamLeaves';
@@ -37,7 +38,8 @@ function App() {
             <Route path="/holidays" element={<HolidayManagement />} />
             <Route path="/settings" element={<SystemSettings />} />
             <Route path="/leave-type-settings" element={<LeaveTypeSettings />} />
-            <Route path="/departments" element={<DepartmentManagement />} />
+            <Route path="/delegations" element={<Delegations />} />
+            <Route path="/hr/departments" element={<DepartmentManagement />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

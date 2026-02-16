@@ -70,7 +70,8 @@ func main() {
 	// Initialize department service first (needed by others)
 	departmentService := services.NewDepartmentService(db.DB)
 
-	workflowService := services.NewWorkflowService(db.DB, departmentService)
+	delegationService := services.NewDelegationService(db.DB)
+	workflowService := services.NewWorkflowService(db.DB, departmentService, delegationService)
 	if err := workflowService.SeedDefaultWorkflows(); err != nil {
 		appLogger.Error("Failed to seed default workflows", zap.Error(err))
 	}
@@ -84,7 +85,7 @@ func main() {
 	)
 
 	leaveCalculator := services.NewLeaveCalculator(holidayService, leaveTypeConfigService)
-	leaveService := services.NewLeaveService(db.DB, leaveCalculator, auditLogger, emailService, holidayService, leaveTypeConfigService, departmentService)
+	leaveService := services.NewLeaveService(db.DB, leaveCalculator, auditLogger, emailService, holidayService, leaveTypeConfigService, departmentService, workflowService)
 	userService := services.NewUserService(db.DB, auditLogger, leaveTypeConfigService, leaveCalculator)
 	configService := services.NewConfigService(db.DB) // Initialize config service with DB
 	auditService := services.NewAuditService(db.DB)   // Initialize audit service with DB
@@ -104,6 +105,7 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(holidayService, configService, leaveService, auditService, leaveTypeConfigService)
 	uploadHandler := handlers.NewUploadHandler()
 	departmentHandler := handlers.NewDepartmentHandler(departmentService)
+	delegationHandler := handlers.NewDelegationHandler(delegationService, userService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtManager)
@@ -146,6 +148,12 @@ func main() {
 		})
 		protected.PUT("/profile", authHandler.UpdateProfile)
 		protected.PUT("/change-password", authHandler.ChangePassword)
+
+		// Delegation routes (available for all authenticated users)
+		protected.POST("/delegations", delegationHandler.CreateDelegation)
+		protected.GET("/delegations", delegationHandler.GetMyDelegations)
+		protected.GET("/delegations/candidates", delegationHandler.GetDelegationCandidates)
+		protected.DELETE("/delegations/:id", delegationHandler.CancelDelegation)
 
 		// Leave requests
 		protected.POST("/leave-requests", leaveHandler.CreateLeaveRequest)

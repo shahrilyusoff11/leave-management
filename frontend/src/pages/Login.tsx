@@ -75,7 +75,7 @@ const Login: React.FC = () => {
                         transition={{ delay: 0.2 }}
                         className="text-4xl font-bold text-slate-900 mb-6 tracking-tight"
                     >
-                        Leave Management
+                        Oh
                     </motion.h1>
 
                     <motion.p

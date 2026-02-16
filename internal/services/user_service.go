@@ -179,3 +179,14 @@ func (us *UserService) UpdateUser(user *models.User) error {
 	user.UpdatedAt = time.Now()
 	return us.db.Save(user).Error
 }
+
+func (us *UserService) SearchUsers(query string) ([]models.User, error) {
+	var users []models.User
+	if query == "" {
+		return nil, nil
+	}
+	search := "%" + query + "%"
+	err := us.db.Where("first_name ILIKE ? OR last_name ILIKE ? OR email ILIKE ?", search, search, search).
+		Limit(20).Find(&users).Error
+	return users, err
+}

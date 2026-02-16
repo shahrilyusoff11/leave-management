@@ -20,7 +20,8 @@ func TestTimeoutLogic(t *testing.T) {
 	db.AutoMigrate(&models.User{}, &models.LeaveRequest{}, &models.LeaveWorkflow{}, &models.WorkflowStep{}, &models.LeaveRequestWorkflowState{}, &models.LeaveBalance{}, &models.Chronology{})
 
 	// Setup Service
-	wfService := services.NewWorkflowService(db, nil) // no department svc needed for this test
+	delegationSvc := services.NewDelegationService(db)
+	wfService := services.NewWorkflowService(db, nil, delegationSvc) // no department svc needed for this test
 
 	// 1. Create a Workflow with a 1-day Timeout -> AutoApprove
 	workflowID := uuid.New()

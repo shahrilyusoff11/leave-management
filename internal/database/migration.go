@@ -20,6 +20,7 @@ func Migrate(db *gorm.DB) error {
 		&models.Department{},
 		&models.User{},
 		&models.HODDelegation{},
+		&models.UserDelegation{},
 		&models.LeaveRequest{},
 		&models.LeaveBalance{},
 		&models.Chronology{},

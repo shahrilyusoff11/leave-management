@@ -25,7 +25,7 @@ type LeaveService struct {
 }
 
 func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
-	auditLogger *logger.AuditLogger, emailService *EmailService, holidayService *HolidayService, leaveTypeConfigSvc *LeaveTypeConfigService, departmentSvc *DepartmentService) *LeaveService {
+	auditLogger *logger.AuditLogger, emailService *EmailService, holidayService *HolidayService, leaveTypeConfigSvc *LeaveTypeConfigService, departmentSvc *DepartmentService, workflowSvc *WorkflowService) *LeaveService {
 	return &LeaveService{
 		db:                 db,
 		calculator:         calculator,
@@ -33,7 +33,7 @@ func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
 		emailService:       emailService,
 		holidayService:     holidayService,
 		leaveTypeConfigSvc: leaveTypeConfigSvc,
-		workflowSvc:        NewWorkflowService(db, departmentSvc),
+		workflowSvc:        workflowSvc,
 		departmentSvc:      departmentSvc,
 	}
 }

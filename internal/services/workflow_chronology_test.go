@@ -40,10 +40,11 @@ func TestChronologyAndBalance(t *testing.T) {
 
 	// Services
 	deptSvc := NewDepartmentService(db)
-	workflowSvc := NewWorkflowService(db, deptSvc)
+	delegationSvc := NewDelegationService(db)
+	workflowSvc := NewWorkflowService(db, deptSvc, delegationSvc)
 	// NewLeaveCalculator(holidayService, leaveTypeConfigSvc)
 	calculator := NewLeaveCalculator(nil, nil)
-	leaveSvc := NewLeaveService(db, calculator, nil, nil, nil, nil, deptSvc)
+	leaveSvc := NewLeaveService(db, calculator, nil, nil, nil, nil, deptSvc, workflowSvc)
 
 	// 1. Setup Data
 	userID := uuid.New()

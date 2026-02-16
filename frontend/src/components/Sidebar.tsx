@@ -122,6 +122,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         <NavItem to="/dashboard" icon={LayoutDashboard}>Dashboard</NavItem>
                         <NavItem to="/profile" icon={User}>My Profile</NavItem>
                         <NavItem to="/my-leaves" icon={CalendarDays}>My Leaves</NavItem>
+                        <NavItem to="/delegations" icon={User}>My Delegations</NavItem>
                         <NavItem to="/request-leave" icon={PlusCircle}>Request Leave</NavItem>
 
                         {/* Manager/HOD: Team management */}

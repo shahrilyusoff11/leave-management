@@ -14,10 +14,15 @@ import (
 type WorkflowService struct {
 	db            *gorm.DB
 	departmentSvc *DepartmentService
+	delegationSvc *DelegationService
 }
 
-func NewWorkflowService(db *gorm.DB, departmentSvc *DepartmentService) *WorkflowService {
-	return &WorkflowService{db: db, departmentSvc: departmentSvc}
+func NewWorkflowService(db *gorm.DB, departmentSvc *DepartmentService, delegationSvc *DelegationService) *WorkflowService {
+	return &WorkflowService{
+		db:            db,
+		departmentSvc: departmentSvc,
+		delegationSvc: delegationSvc,
+	}
 }
 
 // GetWorkflowForLeaveType returns the active workflow configuration for a leave type (used at runtime)
@@ -443,6 +448,32 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 				return []models.User{*approver}, nil
 			}
 			// If resolution fails, fall through to role-based lookup
+		}
+	}
+
+	// 2. [NEW] Check General Delegation (Acting Manager)
+	// If the responsible role is Manager, we should check if the APPLICANT'S manager has delegated
+	if state.CurrentStep.ResponsibleRole == models.RoleManager && s.delegationSvc != nil {
+		var leaveRequest models.LeaveRequest
+		if err := s.db.Preload("User").Preload("User.Manager").First(&leaveRequest, "id = ?", state.LeaveRequestID).Error; err == nil {
+			if leaveRequest.User.ManagerID != nil {
+				// Check if this manager has delegated
+				delegate, err := s.delegationSvc.GetActiveDelegation(*leaveRequest.User.ManagerID, time.Now())
+				if err == nil && delegate != nil {
+					// Return the delegate as the responsible user!
+					return []models.User{*delegate}, nil
+				}
+				// If no delegate, but manager exists, return the manager specifically?
+				// The original system logic below returns ALL managers if role=manager.
+				// But `GetTeamLeaveRequests` implies precise routing.
+				// Let's refine this: If a direct manager is assigned, return ONLY that manager (or their delegate).
+				// If no direct manager, fall back to "All Managers".
+
+				// Return the specific manager
+				if leaveRequest.User.Manager != nil {
+					return []models.User{*leaveRequest.User.Manager}, nil
+				}
+			}
 		}
 	}
 
