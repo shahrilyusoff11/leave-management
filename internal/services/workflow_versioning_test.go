@@ -1,0 +1,115 @@
+package services
+
+import (
+	"leave-management-system/internal/models"
+	"os"
+	"testing"
+
+	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+func TestWorkflowVersioning(t *testing.T) {
+	// Setup DB
+	os.Remove("test_versioning.db")
+	db, err := gorm.Open(sqlite.Open("test_versioning.db"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to connect database: %v", err)
+	}
+
+	db.AutoMigrate(&models.LeaveWorkflow{}, &models.WorkflowStep{}, &models.LeaveRequest{}, &models.LeaveRequestWorkflowState{}, &models.User{})
+
+	workflowSvc := NewWorkflowService(db, nil) // no dept svc needed
+
+	// 1. Create Initial Workflow (v1)
+	wf := models.LeaveWorkflow{
+		ID:           uuid.New(),
+		LeaveType:    models.LeaveTypeAnnual,
+		WorkflowName: "Standard",
+		Version:      1,
+		IsActive:     true,
+	}
+	db.Create(&wf)
+	step1 := models.WorkflowStep{
+		ID:              uuid.New(),
+		WorkflowID:      wf.ID,
+		StepName:        "step1",
+		ResponsibleRole: models.RoleManager,
+		ActionType:      models.ActionApprove,
+	}
+	db.Create(&step1)
+
+	// Update wrapper with first step
+	wf.FirstStepID = &step1.ID
+	db.Save(&wf)
+
+	// 2. Create Request A using v1
+	reqA := models.LeaveRequest{ID: uuid.New(), UserID: uuid.New(), LeaveType: models.LeaveTypeAnnual}
+	db.Create(&reqA)
+	stateA, err := workflowSvc.InitializeWorkflowState(&reqA)
+	if err != nil {
+		t.Fatalf("Failed to init state A: %v", err)
+	}
+
+	if stateA.WorkflowID != wf.ID {
+		t.Errorf("Request A should allow wf v1")
+	}
+
+	// 3. Admin updates Workflow (triggered by adding a step, for example)
+	// We simulate this by calling UpdateWorkflowStep on step1 (which forces versioning because Request A is active)
+	// Or explicitly calling EnsureEditableWorkflow
+
+	newStep := models.WorkflowStep{
+		ID:              uuid.New(),
+		WorkflowID:      wf.ID, // Pointing to old WF
+		StepName:        "step2",
+		ResponsibleRole: models.RoleHR,
+		ActionType:      models.ActionApprove,
+	}
+
+	// This should trigger cloning because Request A exists
+	err = workflowSvc.CreateWorkflowStep(&newStep)
+	if err != nil {
+		t.Fatalf("Failed to create step: %v", err)
+	}
+
+	// 4. Verify Cloning Happened
+	// Old workflow should be inactive
+	var oldWf models.LeaveWorkflow
+	db.First(&oldWf, "id = ?", wf.ID)
+	if oldWf.IsActive {
+		t.Errorf("Old workflow should be inactive")
+	}
+
+	// New workflow should exist and be active
+	var newWf models.LeaveWorkflow
+	db.Where("leave_type = ? AND is_active = ?", models.LeaveTypeAnnual, true).First(&newWf)
+	if newWf.ID == wf.ID {
+		t.Errorf("New active workflow should have different ID")
+	}
+	if newWf.Version != 2 {
+		t.Errorf("New workflow should be version 2, got %d", newWf.Version)
+	}
+
+	// 5. Verify Request A is UNTAGGED (still points to old WF)
+	var stateACheck models.LeaveRequestWorkflowState
+	db.First(&stateACheck, "id = ?", stateA.ID)
+	if stateACheck.WorkflowID != wf.ID {
+		t.Errorf("Request A should still point to old workflow ID")
+	}
+
+	// 6. Create Request B (New)
+	reqB := models.LeaveRequest{ID: uuid.New(), UserID: uuid.New(), LeaveType: models.LeaveTypeAnnual}
+	db.Create(&reqB)
+	stateB, err := workflowSvc.InitializeWorkflowState(&reqB)
+	if err != nil {
+		t.Fatalf("Failed to init state B: %v", err)
+	}
+
+	if stateB.WorkflowID != newWf.ID {
+		t.Errorf("Request B should point to NEW workflow ID")
+	}
+
+	t.Logf("Success! Request A on v%d (%s), Request B on v%d (%s)", oldWf.Version, oldWf.ID, newWf.Version, newWf.ID)
+}

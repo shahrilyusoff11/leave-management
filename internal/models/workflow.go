@@ -77,7 +77,8 @@ type WorkflowStep struct {
 // LeaveWorkflow defines a complete workflow for a leave type
 type LeaveWorkflow struct {
 	ID           uuid.UUID      `gorm:"type:uuid;primary_key" json:"id"`
-	LeaveType    LeaveType      `gorm:"type:varchar(20);unique;not null" json:"leave_type"`
+	LeaveType    LeaveType      `gorm:"type:varchar(20);not null;index" json:"leave_type"` // Removed unique
+	Version      int            `gorm:"default:1" json:"version"`                          // Added Version
 	WorkflowName string         `gorm:"not null" json:"workflow_name"`
 	Description  string         `json:"description"`
 	FirstStepID  *uuid.UUID     `json:"first_step_id"`

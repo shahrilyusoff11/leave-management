@@ -23,33 +23,43 @@ func NewWorkflowService(db *gorm.DB, departmentSvc *DepartmentService) *Workflow
 // GetWorkflowForLeaveType returns the active workflow configuration for a leave type (used at runtime)
 func (s *WorkflowService) GetWorkflowForLeaveType(leaveType models.LeaveType) (*models.LeaveWorkflow, error) {
 	var workflow models.LeaveWorkflow
+	// Fetch the active workflow with the highest version
 	err := s.db.Preload("Steps", func(db *gorm.DB) *gorm.DB {
 		return db.Order("step_order ASC")
-	}).Where("leave_type = ? AND is_active = ?", leaveType, true).First(&workflow).Error
+	}).Where("leave_type = ? AND is_active = ?", leaveType, true).
+		Order("version DESC"). // Get highest version
+		First(&workflow).Error
 	if err != nil {
 		return nil, err
 	}
 	return &workflow, nil
 }
 
-// GetWorkflowByLeaveType returns the workflow for a leave type regardless of active status (used by admin)
+// GetWorkflowByLeaveType returns the latest workflow for a leave type regardless of active status (used by admin)
 func (s *WorkflowService) GetWorkflowByLeaveType(leaveType models.LeaveType) (*models.LeaveWorkflow, error) {
 	var workflow models.LeaveWorkflow
+	// Fetch the latest version (active or not)
 	err := s.db.Preload("Steps", func(db *gorm.DB) *gorm.DB {
 		return db.Order("step_order ASC")
-	}).Where("leave_type = ?", leaveType).First(&workflow).Error
+	}).Where("leave_type = ?", leaveType).
+		Order("version DESC").
+		First(&workflow).Error
 	if err != nil {
 		return nil, err
 	}
 	return &workflow, nil
 }
 
-// GetAllWorkflows returns all workflow configurations
+// GetAllWorkflows returns all workflow configurations (latest versions)
 func (s *WorkflowService) GetAllWorkflows() ([]models.LeaveWorkflow, error) {
 	var workflows []models.LeaveWorkflow
+	// This is tricky with versioning. We want one per leave type.
+	// Since there are few leave types, we can fetch all and filter or use distinct on.
+	// SQLite supports distinct on, but let's be generic.
+	// Simplified: Fetch all IsActive=true.
 	err := s.db.Preload("Steps", func(db *gorm.DB) *gorm.DB {
 		return db.Order("step_order ASC")
-	}).Find(&workflows).Error
+	}).Where("is_active = ?", true).Find(&workflows).Error
 	return workflows, err
 }
 
@@ -456,14 +466,130 @@ func (s *WorkflowService) addToStepHistory(state *models.LeaveRequestWorkflowSta
 	state.StepHistory["steps"] = steps
 }
 
-// UpdateWorkflow updates a workflow configuration
+// EnsureEditableWorkflow checks if the workflow is in use. If so, it creates a new version.
+// Returns: newWorkflowID, map[oldStepID]newStepID, error
+func (s *WorkflowService) EnsureEditableWorkflow(workflowID uuid.UUID) (uuid.UUID, map[uuid.UUID]uuid.UUID, error) {
+	var workflow models.LeaveWorkflow
+	if err := s.db.Preload("Steps").First(&workflow, "id = ?", workflowID).Error; err != nil {
+		return uuid.Nil, nil, err
+	}
+
+	// Check if any requests are using this workflow ID
+	var count int64
+	s.db.Model(&models.LeaveRequestWorkflowState{}).Where("workflow_id = ?", workflowID).Count(&count)
+
+	if count == 0 {
+		return workflowID, nil, nil // Safe to edit in place
+	}
+
+	// In use: Create new version
+	newWorkflowID := uuid.New()
+	newWorkflow := models.LeaveWorkflow{
+		ID:           newWorkflowID,
+		LeaveType:    workflow.LeaveType,
+		Version:      workflow.Version + 1,
+		WorkflowName: workflow.WorkflowName,
+		Description:  workflow.Description,
+		IsActive:     true,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	stepMap := make(map[uuid.UUID]uuid.UUID)
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Archive old workflow
+		if err := tx.Model(&models.LeaveWorkflow{}).Where("id = ?", workflowID).Update("is_active", false).Error; err != nil {
+			return err
+		}
+
+		// 2. Create new workflow
+		if err := tx.Create(&newWorkflow).Error; err != nil {
+			return err
+		}
+
+		// 3. Clone steps
+		var newSteps []models.WorkflowStep
+		for _, step := range workflow.Steps {
+			newStepID := uuid.New()
+			stepMap[step.ID] = newStepID
+
+			newStep := step
+			newStep.ID = newStepID
+			newStep.WorkflowID = newWorkflowID
+			newStep.CreatedAt = time.Now()
+			newStep.UpdatedAt = time.Now()
+			newSteps = append(newSteps, newStep)
+		}
+
+		// 4. Update links
+		for i := range newSteps {
+			if newSteps[i].NextStepOnApprove != nil {
+				if newID, ok := stepMap[*newSteps[i].NextStepOnApprove]; ok {
+					newSteps[i].NextStepOnApprove = &newID
+				}
+			}
+			if newSteps[i].NextStepOnReject != nil {
+				if newID, ok := stepMap[*newSteps[i].NextStepOnReject]; ok {
+					newSteps[i].NextStepOnReject = &newID
+				}
+			}
+			if newSteps[i].FallbackStepID != nil {
+				if newID, ok := stepMap[*newSteps[i].FallbackStepID]; ok {
+					newSteps[i].FallbackStepID = &newID
+				}
+			}
+		}
+
+		// 5. Save steps
+		if len(newSteps) > 0 {
+			if err := tx.Create(&newSteps).Error; err != nil {
+				return err
+			}
+		}
+
+		// 6. Update FirstStepID
+		if workflow.FirstStepID != nil {
+			if newFirstID, ok := stepMap[*workflow.FirstStepID]; ok {
+				if err := tx.Model(&newWorkflow).Update("first_step_id", newFirstID).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		return nil
+	})
+
+	return newWorkflowID, stepMap, err
+}
+
+// UpdateWorkflow updates a workflow configuration (Versioning Aware)
 func (s *WorkflowService) UpdateWorkflow(workflow *models.LeaveWorkflow) error {
+	targetID, _, err := s.EnsureEditableWorkflow(workflow.ID)
+	if err != nil {
+		return err
+	}
+
+	if targetID != workflow.ID {
+		workflow.ID = targetID
+		workflow.Version = workflow.Version + 1
+	}
+
 	workflow.UpdatedAt = time.Now()
 	return s.db.Save(workflow).Error
 }
 
 // CreateWorkflowStep creates a new step in a workflow
 func (s *WorkflowService) CreateWorkflowStep(step *models.WorkflowStep) error {
+	// Ensure we are editing a safe version
+	targetWorkflowID, _, err := s.EnsureEditableWorkflow(step.WorkflowID)
+	if err != nil {
+		return err
+	}
+
+	// Update the step to point to the correct workflow (could be new version)
+	step.WorkflowID = targetWorkflowID
+
 	step.ID = uuid.New()
 	step.CreatedAt = time.Now()
 	step.UpdatedAt = time.Now()
@@ -472,21 +598,86 @@ func (s *WorkflowService) CreateWorkflowStep(step *models.WorkflowStep) error {
 
 // UpdateWorkflowStep updates a workflow step
 func (s *WorkflowService) UpdateWorkflowStep(step *models.WorkflowStep) error {
+	// 1. Get current state of the step to find WorkflowID
+	var existingStep models.WorkflowStep
+	if err := s.db.First(&existingStep, "id = ?", step.ID).Error; err != nil {
+		return err
+	}
+
+	// 2. Ensure Workflow is editable
+	targetWorkflowID, stepMap, err := s.EnsureEditableWorkflow(existingStep.WorkflowID)
+	if err != nil {
+		return err
+	}
+
+	// 3. If workflow was cloned, we need to find the NEW step ID corresponding to 'step.ID'
+	if targetWorkflowID != existingStep.WorkflowID {
+		newStepID, found := stepMap[step.ID]
+		if !found {
+			return errors.New("failed to resolve step ID in new workflow version")
+		}
+		// Redirect update to the new step
+		step.ID = newStepID
+		step.WorkflowID = targetWorkflowID
+	}
+
 	step.UpdatedAt = time.Now()
 	return s.db.Save(step).Error
 }
 
 // DeleteWorkflowStep removes a step from a workflow
 func (s *WorkflowService) DeleteWorkflowStep(stepID uuid.UUID) error {
-	return s.db.Delete(&models.WorkflowStep{}, "id = ?", stepID).Error
+	// 1. Get step
+	var step models.WorkflowStep
+	if err := s.db.First(&step, "id = ?", stepID).Error; err != nil {
+		return err
+	}
+
+	// 2. Ensure editable
+	targetWorkflowID, stepMap, err := s.EnsureEditableWorkflow(step.WorkflowID)
+	if err != nil {
+		return err
+	}
+
+	// 3. Target correct step
+	targetStepID := stepID
+	if targetWorkflowID != step.WorkflowID {
+		if newID, ok := stepMap[stepID]; ok {
+			targetStepID = newID
+		} else {
+			return errors.New("failed to resolve step ID for deletion in new version")
+		}
+	}
+
+	return s.db.Delete(&models.WorkflowStep{}, "id = ?", targetStepID).Error
 }
 
 // ReorderWorkflowSteps updates the order of steps in a workflow
 func (s *WorkflowService) ReorderWorkflowSteps(workflowID uuid.UUID, stepOrders map[uuid.UUID]int) error {
+	// 1. Ensure editable
+	targetWorkflowID, stepMap, err := s.EnsureEditableWorkflow(workflowID)
+	if err != nil {
+		return err
+	}
+
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		for stepID, order := range stepOrders {
+			// Resolve ID
+			targetStepID := stepID
+			if targetWorkflowID != workflowID {
+				if newID, ok := stepMap[stepID]; ok {
+					targetStepID = newID
+				} else {
+					// If mapped step not found (maybe deleted?), skip or error.
+					// Safer to skip if partial map?
+					// But stepOrders usually comes from current view.
+					// If we cloned, stepMap should have it.
+					continue
+				}
+			}
+
 			if err := tx.Model(&models.WorkflowStep{}).
-				Where("id = ? AND workflow_id = ?", stepID, workflowID).
+				Where("id = ? AND workflow_id = ?", targetStepID, targetWorkflowID).
 				Update("step_order", order).Error; err != nil {
 				return err
 			}

@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useToast } from '../components/ui/Toast';
 import WorkflowEditor from '../components/WorkflowEditor';
-import type { LeaveType } from '../types';
+import type { LeaveType, LeaveWorkflow } from '../types';
 
 interface LeaveTypeConfig {
     id: string;
@@ -43,27 +43,41 @@ const LeaveTypeSettings: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState<string | null>(null);
     const [configs, setConfigs] = useState<LeaveTypeConfig[]>([]);
+    const [workflows, setWorkflows] = useState<Record<string, LeaveWorkflow>>({});
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<LeaveTypeConfig>>({});
     const [serviceTiers, setServiceTiers] = useState<ServiceTier[]>([]);
     const { showToast } = useToast();
     const [workflowLeaveType, setWorkflowLeaveType] = useState<LeaveType | null>(null);
 
-    const fetchConfigs = async () => {
+    const fetchData = async () => {
         setLoading(true);
         try {
-            const response = await api.get('/admin/leave-type-configs');
-            setConfigs(response.data);
+            const [configsRes, workflowsRes] = await Promise.all([
+                api.get('/admin/leave-type-configs'),
+                api.get<LeaveWorkflow[]>('/admin/workflows')
+            ]);
+            setConfigs(configsRes.data);
+
+            // Map workflows by leave type for easy lookup
+            const workflowMap: Record<string, LeaveWorkflow> = {};
+            workflowsRes.data.forEach(wf => {
+                // Only store active workflows or the latest version if multiple
+                if (wf.is_active) {
+                    workflowMap[wf.leave_type] = wf;
+                }
+            });
+            setWorkflows(workflowMap);
         } catch (err) {
-            console.error("Failed to fetch configs", err);
-            showToast("Failed to load leave type configurations", "error");
+            console.error("Failed to fetch data", err);
+            showToast("Failed to load settings", "error");
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchConfigs();
+        fetchData();
     }, []);
 
     const handleEdit = (config: LeaveTypeConfig) => {
@@ -136,7 +150,7 @@ const LeaveTypeSettings: React.FC = () => {
             setEditingId(null);
             setEditForm({});
             setServiceTiers([]);
-            fetchConfigs();
+            fetchData();
         } catch (err: any) {
             showToast(err.response?.data?.error || "Failed to update configuration", "error");
         } finally {
@@ -186,6 +200,11 @@ const LeaveTypeSettings: React.FC = () => {
                                 >
                                     <Settings className="h-4 w-4" />
                                     Workflow
+                                    {workflows[config.leave_type] && (
+                                        <span className="ml-1 px-1.5 py-0.5 bg-brand-100 text-brand-700 rounded text-xs font-medium">
+                                            v{workflows[config.leave_type].version}
+                                        </span>
+                                    )}
                                 </Button>
                             </div>
                             {editingId === config.id ? (

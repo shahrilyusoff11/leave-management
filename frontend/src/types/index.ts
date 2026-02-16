@@ -82,6 +82,7 @@ export interface WorkflowStep {
 export interface LeaveWorkflow {
     id: string;
     leave_type: LeaveType;
+    version: number;
     workflow_name: string;
     description: string;
     first_step_id?: string;

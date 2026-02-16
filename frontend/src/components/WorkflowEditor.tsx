@@ -149,7 +149,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
             <div className="workflow-editor-modal">
                 <div className="workflow-header">
                     <div>
-                        <h2>{workflow.workflow_name}</h2>
+                        <h2>{workflow.workflow_name} <span className="version-badge">v{workflow.version}</span></h2>
                         <p className="workflow-description">{workflow.description}</p>
                     </div>
                     <button onClick={onClose} className="close-btn">&times;</button>
