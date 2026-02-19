@@ -208,6 +208,7 @@ func main() {
 			hr.POST("/departments/:id/delegations", departmentHandler.CreateHODDelegation)
 			hr.GET("/departments/:id/delegations", departmentHandler.GetDelegations)
 			hr.DELETE("/departments/delegations/:delegationId", departmentHandler.DeleteHODDelegation)
+			hr.GET("/dashboard-stats", adminHandler.GetDashboardStats)
 		}
 
 		// Admin routes
