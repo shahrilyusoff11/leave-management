@@ -26,7 +26,7 @@ interface SidebarProps {
 
 // Role hierarchy helpers
 const isManager = (role?: UserRole) =>
-    role === 'manager' || role === 'hod'; // Removed 'hr', 'admin', 'sysadmin' to declutter for them
+    role === 'manager' || role === 'hod' || role === 'hr' || role === 'admin' || role === 'sysadmin';
 
 const isHR = (role?: UserRole) =>
     role === 'hr' || role === 'admin' || role === 'sysadmin';
@@ -138,7 +138,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                             <>
                                 <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">HR Administration</div>
                                 <NavItem to="/users" icon={Users}>User Management</NavItem>
-                                <NavItem to="/departments" icon={Building}>Departments</NavItem>
+                                <NavItem to="/hr/departments" icon={Building}>Departments</NavItem>
                                 <NavItem to="/hr-leaves" icon={CalendarDays}>All Leave Requests</NavItem>
                                 <NavItem to="/reports" icon={FileText}>Reports</NavItem>
                             </>
