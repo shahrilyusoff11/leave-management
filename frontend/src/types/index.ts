@@ -34,6 +34,7 @@ export interface LeaveRequest {
     rejection_reason?: string;
     created_at: string;
     workflow_state?: LeaveRequestWorkflowState;
+    can_action?: boolean;
 }
 
 export interface LeaveBalance {

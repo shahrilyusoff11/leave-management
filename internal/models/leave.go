@@ -57,6 +57,7 @@ type LeaveRequest struct {
 	WorkflowStateID *uuid.UUID                 `json:"workflow_state_id"`
 	WorkflowState   *LeaveRequestWorkflowState `gorm:"foreignKey:WorkflowStateID" json:"workflow_state,omitempty"`
 	ConvertedFrom   *LeaveType                 `gorm:"type:varchar(20)" json:"converted_from"` // Track AL→EL or EL→Unpaid conversions
+	CanAction       bool                       `gorm:"-" json:"can_action"`
 	CreatedAt       time.Time                  `json:"created_at"`
 	UpdatedAt       time.Time                  `json:"updated_at"`
 }

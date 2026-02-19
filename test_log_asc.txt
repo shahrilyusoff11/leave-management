@@ -1,0 +1,10 @@
+=== RUN   TestFullWorkflowCycle
+    workflow_full_cycle_test.go:22: 
+        	Error Trace:	C:/Vibe Coding/leave-management-system/internal/services/workflow_full_cycle_test.go:22
+        	Error:      	Received unexpected error:
+        	            	Binary was compiled with 'CGO_ENABLED=0', go-sqlite3 requires cgo to work. This is a stub
+        	Test:       	TestFullWorkflowCycle
+--- FAIL: TestFullWorkflowCycle (0.00s)
+FAIL
+FAIL	leave-management-system/internal/services	0.143s
+FAIL

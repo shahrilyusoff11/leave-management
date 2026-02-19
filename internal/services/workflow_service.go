@@ -27,9 +27,13 @@ func NewWorkflowService(db *gorm.DB, departmentSvc *DepartmentService, delegatio
 
 // GetWorkflowForLeaveType returns the active workflow configuration for a leave type (used at runtime)
 func (s *WorkflowService) GetWorkflowForLeaveType(leaveType models.LeaveType) (*models.LeaveWorkflow, error) {
+	return s.getWorkflowForLeaveType(s.db, leaveType)
+}
+
+func (s *WorkflowService) getWorkflowForLeaveType(db *gorm.DB, leaveType models.LeaveType) (*models.LeaveWorkflow, error) {
 	var workflow models.LeaveWorkflow
 	// Fetch the active workflow with the highest version
-	err := s.db.Preload("Steps", func(db *gorm.DB) *gorm.DB {
+	err := db.Preload("Steps", func(db *gorm.DB) *gorm.DB {
 		return db.Order("step_order ASC")
 	}).Where("leave_type = ? AND is_active = ?", leaveType, true).
 		Order("version DESC"). // Get highest version
@@ -80,7 +84,11 @@ func (s *WorkflowService) GetWorkflowStep(stepID uuid.UUID) (*models.WorkflowSte
 
 // InitializeWorkflowState creates initial workflow state for a leave request
 func (s *WorkflowService) InitializeWorkflowState(leaveRequest *models.LeaveRequest) (*models.LeaveRequestWorkflowState, error) {
-	workflow, err := s.GetWorkflowForLeaveType(leaveRequest.LeaveType)
+	return s.InitializeWorkflowStateWithTx(s.db, leaveRequest)
+}
+
+func (s *WorkflowService) InitializeWorkflowStateWithTx(tx *gorm.DB, leaveRequest *models.LeaveRequest) (*models.LeaveRequestWorkflowState, error) {
+	workflow, err := s.getWorkflowForLeaveType(tx, leaveRequest.LeaveType)
 	if err != nil {
 		return nil, fmt.Errorf("no active workflow configuration found for leave type %s: %w", leaveRequest.LeaveType, err)
 	}
@@ -102,7 +110,7 @@ func (s *WorkflowService) InitializeWorkflowState(leaveRequest *models.LeaveRequ
 		UpdatedAt:      time.Now(),
 	}
 
-	if err := s.db.Create(state).Error; err != nil {
+	if err := tx.Create(state).Error; err != nil {
 		return nil, err
 	}
 
@@ -224,6 +232,24 @@ func (s *WorkflowService) ProcessActionWithTx(
 		"completed": time.Now().Format(time.RFC3339),
 	}
 	s.addToStepHistory(&state, historyEntry)
+
+	// [UNIFIED CHRONOLOGY] Also create a persistent chronology entry for the main history view
+	chronology := models.Chronology{
+		ID:             uuid.New(),
+		LeaveRequestID: leaveRequestID,
+		Action:         string(action),
+		ActorID:        actorID,
+		Comment:        comment,
+		Metadata: models.JSONMap{
+			"step_name":  currentStep.StepName,
+			"step_label": currentStep.StepLabel,
+			"action":     string(action),
+		},
+		CreatedAt: time.Now(),
+	}
+	if err := tx.Create(&chronology).Error; err != nil {
+		return nil, err
+	}
 
 	// Determine next step based on action
 	var nextStepID *uuid.UUID

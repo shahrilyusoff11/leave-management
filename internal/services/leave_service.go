@@ -49,32 +49,33 @@ func (ls *LeaveService) GetDB() *gorm.DB {
 }
 
 func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.LeaveRequest) error {
+	// 1. Get user with manager (Read access outside transaction to avoid deadlock with subsequent service calls)
+	var user models.User
+	if err := ls.db.Preload("Manager").First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+
+	// 2. Validate request (Uses LeaveTypeConfigService -> ls.db)
+	if err := ls.calculator.ValidateLeaveRequest(&user, request); err != nil {
+		return err
+	}
+
+	// 3. Calculate working days (Uses HolidayService -> ls.db)
+	workingDays, err := ls.calculator.CalculateWorkingDays(
+		request.StartDate, request.EndDate, request.LeaveType)
+	if err != nil {
+		return err
+	}
+	request.DurationDays = workingDays
+
+	// 4. Start Transaction for Writes
 	return ls.db.Transaction(func(tx *gorm.DB) error {
-		// Get user with manager
-		var user models.User
-		if err := tx.Preload("Manager").First(&user, "id = ?", userID).Error; err != nil {
-			return err
-		}
-
-		// Validate request
-		if err := ls.calculator.ValidateLeaveRequest(&user, request); err != nil {
-			return err
-		}
-
-		// Calculate working days
-		workingDays, err := ls.calculator.CalculateWorkingDays(
-			request.StartDate, request.EndDate, request.LeaveType)
-		if err != nil {
-			return err
-		}
-		request.DurationDays = workingDays
-
 		// Check balance for leave types that deduct from balance
 		if request.LeaveType == models.LeaveTypeAnnual ||
 			request.LeaveType == models.LeaveTypeEmergency ||
 			request.LeaveType == models.LeaveTypeSick {
 
-			balance, err := ls.GetLeaveBalance(userID, int(time.Now().Year()), request.LeaveType)
+			balance, err := ls.getLeaveBalance(tx, userID, int(time.Now().Year()), request.LeaveType)
 			if err != nil {
 				return err
 			}
@@ -121,7 +122,7 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 		}
 
 		// Initialize workflow state - MANDATORY
-		workflowState, err := ls.workflowSvc.InitializeWorkflowState(request)
+		workflowState, err := ls.workflowSvc.InitializeWorkflowStateWithTx(tx, request)
 		if err != nil {
 			return fmt.Errorf("failed to initialize workflow: %w", err)
 		}
@@ -158,81 +159,62 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 }
 
 func (ls *LeaveService) ApproveLeave(requestID, approverID uuid.UUID, comment string) error {
-	var requestToNotify *models.LeaveRequest
-	var usersToNotify []models.User
-	var notificationType string // "approve" or "action"
+	// 1. Fetch Request & Workflow State (Read-only, outside transaction)
+	var request models.LeaveRequest
+	if err := ls.db.Preload("User").First(&request, "id = ?", requestID).Error; err != nil {
+		return err
+	}
 
-	err := ls.db.Transaction(func(tx *gorm.DB) error {
-		var request models.LeaveRequest
-		if err := tx.Preload("User").First(&request, "id = ?", requestID).Error; err != nil {
-			return err
-		}
+	if request.Status != models.StatusPending && request.Status != models.StatusEscalated {
+		return errors.New("leave request is not pending")
+	}
 
-		if request.Status != models.StatusPending && request.Status != models.StatusEscalated {
-			return errors.New("leave request is not pending")
-		}
+	// Get Approver details
+	var approver models.User
+	if err := ls.db.First(&approver, "id = ?", approverID).Error; err != nil {
+		return err
+	}
 
-		// Get Approver details
-		var approver models.User
-		if err := tx.First(&approver, "id = ?", approverID).Error; err != nil {
-			return err
-		}
+	// Get Workflow State
+	var workflowState models.LeaveRequestWorkflowState
+	if err := ls.db.Preload("CurrentStep").Where("leave_request_id = ?", requestID).First(&workflowState).Error; err != nil {
+		return fmt.Errorf("active workflow not found for request: %w", err)
+	}
 
-		// MANDATORY: Workflow State must exist
-		var workflowState models.LeaveRequestWorkflowState
-		if err := tx.Preload("CurrentStep").Where("leave_request_id = ?", requestID).First(&workflowState).Error; err != nil {
-			return fmt.Errorf("active workflow not found for request: %w", err)
-		}
+	if workflowState.CurrentStep == nil {
+		return errors.New("workflow state exists but has no current step")
+	}
 
-		if workflowState.CurrentStep == nil {
-			return errors.New("workflow state exists but has no current step")
-		}
+	// 2. Check Permissions (Uses WorkflowService -> ls.db, safe outside tx)
+	responsibleUsers, err := ls.workflowSvc.GetResponsibleUsers(&workflowState)
+	if err != nil {
+		return fmt.Errorf("failed to determine responsible users: %w", err)
+	}
 
-		// Use WorkflowService to validate responsible users
-		responsibleUsers, err := ls.workflowSvc.GetResponsibleUsers(&workflowState)
-		if err != nil {
-			return fmt.Errorf("failed to determine responsible users: %w", err)
-		}
-
-		isAuthorized := false
-		for _, u := range responsibleUsers {
-			if u.ID == approverID {
-				isAuthorized = true
-				break
-			}
-		}
-
-		// Special case: SysAdmin override (optional, but good for safety)
-		if !isAuthorized && approver.Role == models.RoleSysAdmin {
+	isAuthorized := false
+	for _, u := range responsibleUsers {
+		if u.ID == approverID {
 			isAuthorized = true
+			break
 		}
+	}
 
-		if !isAuthorized {
-			return fmt.Errorf("user %s is not authorized to approve this step (requires: %s)",
-				approver.ID, workflowState.CurrentStep.ResponsibleRole)
-		}
+	// SysAdmin override
+	if !isAuthorized && approver.Role == models.RoleSysAdmin {
+		isAuthorized = true
+	}
 
-		// Process Action
-		updatedState, err := ls.workflowSvc.ProcessActionWithTx(tx, requestID, models.StepActionApproved, approverID, comment)
+	if !isAuthorized {
+		return fmt.Errorf("user %s is not authorized to approve this step (requires: %s)",
+			approver.ID, workflowState.CurrentStep.ResponsibleRole)
+	}
+
+	// 3. Perform Action (Transaction for Writes)
+	var updatedState *models.LeaveRequestWorkflowState
+	err = ls.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		updatedState, err = ls.workflowSvc.ProcessActionWithTx(tx, requestID, models.StepActionApproved, approverID, comment)
 		if err != nil {
-			return err
-		}
-
-		// Create Chronology Entry
-		chronology := models.Chronology{
-			ID:             uuid.New(),
-			LeaveRequestID: requestID,
-			Action:         "approved",
-			ActorID:        approverID,
-			Comment:        comment,
-			Metadata: models.JSONMap{
-				"step_name":  workflowState.CurrentStep.StepName,
-				"step_label": workflowState.CurrentStep.StepLabel,
-				"is_final":   updatedState.IsComplete,
-			},
-			CreatedAt: time.Now(),
-		}
-		if err := tx.Create(&chronology).Error; err != nil {
 			return err
 		}
 
@@ -260,39 +242,31 @@ func (ls *LeaveService) ApproveLeave(requestID, approverID uuid.UUID, comment st
 				}
 			}
 		}
-
-		// Prepare for notifications (outside transaction)
-		if updatedState.IsComplete {
-			if updatedState.FinalStatus == models.StatusApproved {
-				requestToNotify = &request
-				notificationType = "approve"
-			}
-		} else if updatedState.CurrentStep != nil {
-			// Workflow continues
-			nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
-			if err == nil {
-				usersToNotify = nextResponsibles
-				requestToNotify = &request
-				notificationType = "action"
-			}
-		}
-
 		return nil
 	})
 
-	// Send Notifications (if transaction succeeded)
-	if err == nil && requestToNotify != nil && ls.emailService != nil {
-		switch notificationType {
-		case "approve":
-			_ = ls.emailService.SendApprovalNotification(requestToNotify)
-		case "action":
-			for _, user := range usersToNotify {
-				_ = ls.emailService.SendActionRequiredEmail(user, requestToNotify, "Pending Action")
+	if err != nil {
+		return err
+	}
+
+	// 4. Notifications (Outside Transaction)
+	if ls.emailService != nil {
+		if updatedState.IsComplete {
+			if updatedState.FinalStatus == models.StatusApproved {
+				_ = ls.emailService.SendApprovalNotification(&request)
+			}
+		} else if updatedState.CurrentStep != nil {
+			// Workflow continues - Find next approvers
+			nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
+			if err == nil {
+				for _, user := range nextResponsibles {
+					_ = ls.emailService.SendActionRequiredEmail(user, &request, "Pending Action")
+				}
 			}
 		}
 	}
 
-	return err
+	return nil
 }
 
 // Helper to deduct balance (extracted for clarity)
@@ -328,16 +302,20 @@ func (ls *LeaveService) deductLeaveBalance(tx *gorm.DB, request *models.LeaveReq
 }
 
 func (ls *LeaveService) GetLeaveBalance(userID uuid.UUID, year int, leaveType models.LeaveType) (*models.LeaveBalance, error) {
+	return ls.getLeaveBalance(ls.db, userID, year, leaveType)
+}
+
+func (ls *LeaveService) getLeaveBalance(db *gorm.DB, userID uuid.UUID, year int, leaveType models.LeaveType) (*models.LeaveBalance, error) {
 	var balance models.LeaveBalance
 
-	err := ls.db.Where("user_id = ? AND year = ? AND leave_type = ?",
+	err := db.Where("user_id = ? AND year = ? AND leave_type = ?",
 		userID, year, leaveType).
 		First(&balance).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// Create default balance if not exists
 		var user models.User
-		if err := ls.db.First(&user, "id = ?", userID).Error; err != nil {
+		if err := db.First(&user, "id = ?", userID).Error; err != nil {
 			return nil, err
 		}
 
@@ -355,7 +333,7 @@ func (ls *LeaveService) GetLeaveBalance(userID uuid.UUID, year int, leaveType mo
 			UpdatedAt:        time.Now(),
 		}
 
-		if err := ls.db.Create(&balance).Error; err != nil {
+		if err := db.Create(&balance).Error; err != nil {
 			return nil, err
 		}
 	} else if err != nil {
@@ -541,82 +519,62 @@ func (ls *LeaveService) CancelLeaveRequest(requestID, userID uuid.UUID) error {
 }
 
 func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment string) error {
-	var requestToNotify *models.LeaveRequest
-	var usersToNotify []models.User
-	var notificationType string // "reject" or "action"
+	// 1. Fetch Request & Workflow State (Read-only, outside transaction)
+	var request models.LeaveRequest
+	if err := ls.db.Preload("User").First(&request, "id = ?", requestID).Error; err != nil {
+		return err
+	}
 
-	err := ls.db.Transaction(func(tx *gorm.DB) error {
-		var request models.LeaveRequest
-		if err := tx.Preload("User").First(&request, "id = ?", requestID).Error; err != nil {
-			return err
-		}
+	if request.Status != models.StatusPending && request.Status != models.StatusEscalated {
+		return errors.New("leave request is not pending")
+	}
 
-		// Check if request can be rejected
-		if request.Status != models.StatusPending && request.Status != models.StatusEscalated {
-			return errors.New("leave request is not pending")
-		}
+	// Get Approver details
+	var approver models.User
+	if err := ls.db.First(&approver, "id = ?", approverID).Error; err != nil {
+		return err
+	}
 
-		// Get Approver details
-		var approver models.User
-		if err := tx.First(&approver, "id = ?", approverID).Error; err != nil {
-			return err
-		}
+	// Get Workflow State
+	var workflowState models.LeaveRequestWorkflowState
+	if err := ls.db.Preload("CurrentStep").Where("leave_request_id = ?", requestID).First(&workflowState).Error; err != nil {
+		return fmt.Errorf("active workflow not found for request: %w", err)
+	}
 
-		// MANDATORY: Workflow State must exist
-		var workflowState models.LeaveRequestWorkflowState
-		if err := tx.Preload("CurrentStep").Where("leave_request_id = ?", requestID).First(&workflowState).Error; err != nil {
-			return fmt.Errorf("active workflow not found for request: %w", err)
-		}
+	if workflowState.CurrentStep == nil {
+		return errors.New("workflow state exists but has no current step")
+	}
 
-		if workflowState.CurrentStep == nil {
-			return errors.New("workflow state exists but has no current step")
-		}
+	// 2. Check Permissions (Uses WorkflowService -> ls.db, safe outside tx)
+	responsibleUsers, err := ls.workflowSvc.GetResponsibleUsers(&workflowState)
+	if err != nil {
+		return fmt.Errorf("failed to determine responsible users: %w", err)
+	}
 
-		// Use WorkflowService to validate responsible users
-		responsibleUsers, err := ls.workflowSvc.GetResponsibleUsers(&workflowState)
-		if err != nil {
-			return fmt.Errorf("failed to determine responsible users: %w", err)
-		}
-
-		isAuthorized := false
-		for _, u := range responsibleUsers {
-			if u.ID == approverID {
-				isAuthorized = true
-				break
-			}
-		}
-
-		// Special case: SysAdmin can override
-		if !isAuthorized && approver.Role == models.RoleSysAdmin {
+	isAuthorized := false
+	for _, u := range responsibleUsers {
+		if u.ID == approverID {
 			isAuthorized = true
+			break
 		}
+	}
 
-		if !isAuthorized {
-			return fmt.Errorf("user %s is not authorized to reject this step (requires: %s)",
-				approver.ID, workflowState.CurrentStep.ResponsibleRole)
-		}
+	// SysAdmin override
+	if !isAuthorized && approver.Role == models.RoleSysAdmin {
+		isAuthorized = true
+	}
 
-		// Process Action
-		updatedState, err := ls.workflowSvc.ProcessActionWithTx(tx, requestID, models.StepActionRejected, approverID, comment)
+	if !isAuthorized {
+		return fmt.Errorf("user %s is not authorized to reject this step (requires: %s)",
+			approver.ID, workflowState.CurrentStep.ResponsibleRole)
+	}
+
+	// 3. Perform Action (Transaction for Writes)
+	var updatedState *models.LeaveRequestWorkflowState
+	err = ls.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		updatedState, err = ls.workflowSvc.ProcessActionWithTx(tx, requestID, models.StepActionRejected, approverID, comment)
 		if err != nil {
-			return err
-		}
-
-		// Create Chronology Entry
-		chronology := models.Chronology{
-			ID:             uuid.New(),
-			LeaveRequestID: requestID,
-			Action:         "rejected",
-			ActorID:        approverID,
-			Comment:        comment,
-			Metadata: models.JSONMap{
-				"step_name":  workflowState.CurrentStep.StepName,
-				"step_label": workflowState.CurrentStep.StepLabel,
-				"is_final":   updatedState.IsComplete,
-			},
-			CreatedAt: time.Now(),
-		}
-		if err := tx.Create(&chronology).Error; err != nil {
 			return err
 		}
 
@@ -634,36 +592,28 @@ func (ls *LeaveService) RejectLeave(requestID, approverID uuid.UUID, comment str
 				return err
 			}
 		}
-
-		// Prepare notifications
-		if updatedState.IsComplete && updatedState.FinalStatus == models.StatusRejected {
-			requestToNotify = &request
-			notificationType = "reject"
-		} else if updatedState.CurrentStep != nil {
-			nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
-			if err == nil {
-				usersToNotify = nextResponsibles
-				requestToNotify = &request
-				notificationType = "action"
-			}
-		}
-
 		return nil
 	})
 
-	// Send Notifications
-	if err == nil && requestToNotify != nil && ls.emailService != nil {
-		switch notificationType {
-		case "reject":
-			_ = ls.emailService.SendRejectionNotification(requestToNotify)
-		case "action":
-			for _, user := range usersToNotify {
-				_ = ls.emailService.SendActionRequiredEmail(user, requestToNotify, "Pending Action")
+	if err != nil {
+		return err
+	}
+
+	// 4. Notifications (Outside Transaction)
+	if ls.emailService != nil {
+		if updatedState.IsComplete && updatedState.FinalStatus == models.StatusRejected {
+			_ = ls.emailService.SendRejectionNotification(&request)
+		} else if updatedState.CurrentStep != nil {
+			nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
+			if err == nil {
+				for _, user := range nextResponsibles {
+					_ = ls.emailService.SendActionRequiredEmail(user, &request, "Pending Action")
+				}
 			}
 		}
 	}
 
-	return err
+	return nil
 }
 
 func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year string) ([]models.LeaveRequest, error) {
@@ -733,6 +683,45 @@ func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year s
 						seen[r.ID] = true
 					}
 				}
+			}
+		}
+	}
+
+	// Calculate CanAction for each request
+	for i := range requests {
+		if requests[i].Status == models.StatusPending && requests[i].WorkflowState != nil {
+			responsibleUsers, err := ls.workflowSvc.GetResponsibleUsers(requests[i].WorkflowState)
+			if err == nil {
+				for _, u := range responsibleUsers {
+					if u.ID == managerID {
+						requests[i].CanAction = true
+						break
+					}
+				}
+				// SysAdmin override
+				if !requests[i].CanAction {
+					// We need to fetch the user role to check for SysAdmin override if not already known
+					// But managerID is passed in. We can assume the caller knows their role?
+					// Only if we fetched the manager user.
+					// Optimization: Let's just trust GetResponsibleUsers for now.
+					// If managerID is SysAdmin, we should probably fetch it once at start of function?
+					// For now, let's stick to strict responsible users.
+					// Actually, GetResponsibleUsers DOES NOT return SysAdmin unless explicitly routed.
+					// The ApproveLeave function allows SysAdmin override.
+					// We should probably check if managerID corresponds to a SysAdmin.
+					// But fetching user for every call might be slow?
+					// Let's doing it once.
+				}
+			}
+		}
+	}
+
+	// Double check for SysAdmin override efficiently
+	var manager models.User
+	if err := ls.db.First(&manager, "id = ?", managerID).Error; err == nil && manager.Role == models.RoleSysAdmin {
+		for i := range requests {
+			if requests[i].Status == models.StatusPending {
+				requests[i].CanAction = true
 			}
 		}
 	}

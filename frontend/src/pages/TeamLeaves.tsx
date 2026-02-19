@@ -1,37 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Filter, Check, X, History, FileText, GitBranch } from 'lucide-react';
+import { Filter, Check, History, FileText, GitBranch } from 'lucide-react';
 import api from '../services/api';
 import type { LeaveRequest } from '../types';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { Modal } from '../components/ui/Modal';
-import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { getDisplayDuration, formatDuration } from '../utils/duration';
 import LeaveHistoryModal from '../components/LeaveHistoryModal';
 import WorkflowStateDisplay from '../components/WorkflowStateDisplay';
-import { useToast } from '../components/ui/Toast';
-import { useAuth } from '../context/AuthContext';
 
 const TeamLeaves: React.FC = () => {
-    const { user } = useAuth();
-    const { showToast } = useToast();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
-    const [processingId, setProcessingId] = useState<string | null>(null);
-    const [rejectModalOpen, setRejectModalOpen] = useState(false);
-    const [rejectingId, setRejectingId] = useState<string | null>(null);
-    const [rejectNote, setRejectNote] = useState('');
+
+    // Modal State
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
     const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
     const [selectedLeaveType, setSelectedLeaveType] = useState<string>('');
     const [showWorkflow, setShowWorkflow] = useState<Record<string, boolean>>({});
-
-    // Confirmation Modal State
-    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
-    const [pendingAction, setPendingAction] = useState<{ type: 'approve', id: string } | null>(null);
 
     const openHistoryModal = (req: LeaveRequest) => {
         setSelectedRequestId(req.id);
@@ -57,57 +45,6 @@ const TeamLeaves: React.FC = () => {
         fetchRequests();
     }, []);
 
-    const initiateApprove = (id: string) => {
-        setPendingAction({ type: 'approve', id });
-        setConfirmModalOpen(true);
-    };
-
-    const handleConfirmAction = async () => {
-        if (!pendingAction) return;
-
-        setProcessingId(pendingAction.id);
-        try {
-            if (pendingAction.type === 'approve') {
-                await api.put(`/leave-requests/${pendingAction.id}/approve`, {});
-                showToast('Leave request approved', 'success');
-                fetchRequests();
-            }
-        } catch (error) {
-            console.error('Failed to approve request', error);
-            showToast('Failed to approve request', 'error');
-        } finally {
-            setProcessingId(null);
-            setConfirmModalOpen(false);
-            setPendingAction(null);
-        }
-    };
-
-
-    const openRejectModal = (id: string) => {
-        setRejectingId(id);
-        setRejectNote('');
-        setRejectModalOpen(true);
-    };
-
-    const handleReject = async () => {
-        if (!rejectingId) return;
-
-        setProcessingId(rejectingId);
-        try {
-            await api.put(`/leave-requests/${rejectingId}/reject`, { comment: rejectNote });
-            setRejectModalOpen(false);
-            setRejectingId(null);
-            setRejectNote('');
-            showToast('Leave request rejected', 'success');
-            fetchRequests();
-        } catch (error) {
-            console.error('Failed to reject request', error);
-            showToast('Failed to reject request', 'error');
-        } finally {
-            setProcessingId(null);
-        }
-    };
-
     const getStatusVariant = (status: string) => {
         switch (status) {
             case 'approved': return 'success';
@@ -118,30 +55,6 @@ const TeamLeaves: React.FC = () => {
         }
     };
 
-    // Helper to check if current user can approve/reject
-    const canActionRequest = (req: LeaveRequest) => {
-        if (req.status !== 'pending') return false;
-
-        // If workflow state is present, enforce strict role check
-        if (req.workflow_state?.current_step) {
-            const requiredRole = req.workflow_state.current_step.responsible_role;
-            // SysAdmin can always override (matching backend logic)
-            if (user?.role === 'sysadmin') return true;
-            return user?.role === requiredRole;
-        }
-
-        // Fallback: If no workflow state (should not happen for new requests but possible for legacy),
-        // we allow sysadmin to fix it, or if backend allows, maybe manager?
-        // But to be safe and match strict backend, only SysAdmin or maybe explicit Manager role.
-        // Let's stick to SysAdmin as fallback safe guard.
-        return user?.role === 'sysadmin';
-    };
-
-    const filteredRequests = requests.filter(req => {
-        if (filter === 'all') return true;
-        return req.status === filter;
-    });
-
     if (loading) {
         return (
             <div className="flex justify-center items-center h-64">
@@ -149,6 +62,11 @@ const TeamLeaves: React.FC = () => {
             </div>
         );
     }
+
+    const filteredRequests = requests.filter(req => {
+        if (filter === 'all') return true;
+        return req.status === filter;
+    });
 
     return (
         <div className="space-y-6">
@@ -280,30 +198,6 @@ const TeamLeaves: React.FC = () => {
                                                     >
                                                         <History className="h-4 w-4" />
                                                     </Button>
-                                                    {canActionRequest(req) && (
-                                                        <>
-                                                            <Button
-                                                                size="sm"
-                                                                className="h-8 w-8 p-0 rounded-full bg-green-50 text-green-600 hover:bg-green-100 border-green-200"
-                                                                variant="ghost"
-                                                                onClick={() => initiateApprove(req.id)}
-                                                                isLoading={processingId === req.id}
-                                                                title="Approve"
-                                                            >
-                                                                <Check className="h-4 w-4" />
-                                                            </Button>
-                                                            <Button
-                                                                size="sm"
-                                                                className="h-8 w-8 p-0 rounded-full bg-red-50 text-red-600 hover:bg-red-100 border-red-200"
-                                                                variant="ghost"
-                                                                onClick={() => openRejectModal(req.id)}
-                                                                isLoading={processingId === req.id}
-                                                                title="Reject"
-                                                            >
-                                                                <X className="h-4 w-4" />
-                                                            </Button>
-                                                        </>
-                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -314,7 +208,7 @@ const TeamLeaves: React.FC = () => {
                                                         requestId={req.id}
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
-                                                        showActions={req.status === 'pending' && canActionRequest(req)}
+                                                        showActions={req.status === 'pending' && !!req.can_action}
                                                     />
                                                 </td>
                                             </tr>
@@ -327,49 +221,11 @@ const TeamLeaves: React.FC = () => {
                 </div>
             </Card>
 
-            {/* Rejection Modal */}
-            <Modal isOpen={rejectModalOpen} onClose={() => setRejectModalOpen(false)} title="Reject Leave Request">
-                <div className="space-y-4">
-                    <p className="text-sm text-slate-600">
-                        Please provide a reason for rejecting this leave request (optional).
-                    </p>
-                    <textarea
-                        value={rejectNote}
-                        onChange={(e) => setRejectNote(e.target.value)}
-                        className="w-full min-h-[100px] px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
-                        placeholder="e.g., Team workload is high during this period..."
-                    />
-                    <div className="flex justify-end gap-3">
-                        <Button variant="ghost" onClick={() => setRejectModalOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            className="bg-red-600 hover:bg-red-700"
-                            onClick={handleReject}
-                            isLoading={processingId === rejectingId}
-                        >
-                            Reject Request
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
-
             <LeaveHistoryModal
                 isOpen={historyModalOpen}
                 onClose={() => setHistoryModalOpen(false)}
                 requestId={selectedRequestId}
                 leaveType={selectedLeaveType}
-            />
-
-            <ConfirmationModal
-                isOpen={confirmModalOpen}
-                onClose={() => setConfirmModalOpen(false)}
-                onConfirm={handleConfirmAction}
-                title="Approve Request"
-                message="Are you sure you want to approve this leave request? This action will update the employee's leave balance."
-                confirmText="Approve Request"
-                type="success"
-                isLoading={!!processingId}
             />
         </div>
     );
