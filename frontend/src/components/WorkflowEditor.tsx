@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import api from '../services/api';
 import type { LeaveWorkflow, WorkflowStep, LeaveType, UserRole, WorkflowActionType, TimeoutAction, LeaveStatus } from '../types';
 import './WorkflowEditor.css';
@@ -121,17 +122,18 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
     };
 
     if (loading) {
-        return (
+        return ReactDOM.createPortal(
             <div className="workflow-editor-overlay">
                 <div className="workflow-editor-modal">
                     <div className="loading-spinner">Loading workflow...</div>
                 </div>
-            </div>
+            </div>,
+            document.body
         );
     }
 
     if (!workflow) {
-        return (
+        return ReactDOM.createPortal(
             <div className="workflow-editor-overlay">
                 <div className="workflow-editor-modal">
                     <div className="workflow-header">
@@ -140,101 +142,105 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
                     </div>
                     <p>No workflow has been configured for this leave type.</p>
                 </div>
-            </div>
+            </div>,
+            document.body
         );
     }
 
-    return (
-        <div className="workflow-editor-overlay">
-            <div className="workflow-editor-modal">
-                <div className="workflow-header">
-                    <div>
-                        <h2>{workflow.workflow_name} <span className="version-badge">v{workflow.version}</span></h2>
-                        <p className="workflow-description">{workflow.description}</p>
+    return ReactDOM.createPortal(
+        <>
+            <div className="workflow-editor-overlay">
+                <div className="workflow-editor-modal">
+                    <div className="workflow-header">
+                        <div>
+                            <h2>{workflow.workflow_name} <span className="version-badge">v{workflow.version}</span></h2>
+                            <p className="workflow-description">{workflow.description}</p>
+                        </div>
+                        <button onClick={onClose} className="close-btn">&times;</button>
                     </div>
-                    <button onClick={onClose} className="close-btn">&times;</button>
-                </div>
 
-                {error && <div className="error-banner">{error}</div>}
+                    {error && <div className="error-banner">{error}</div>}
 
-                <div className="workflow-status">
-                    <span className={`status-badge ${workflow.is_active ? 'active' : 'inactive'}`}>
-                        {workflow.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                    <button
-                        onClick={handleWorkflowToggle}
-                        className={`toggle-btn ${workflow.is_active ? 'deactivate' : 'activate'}`}
-                    >
-                        {workflow.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
-                </div>
-
-                <div className="workflow-steps">
-                    <div className="steps-header">
-                        <h3>Workflow Steps</h3>
-                        <button onClick={createNewStep} className="add-step-btn">
-                            + Add Step
+                    <div className="workflow-status">
+                        <span className={`status-badge ${workflow.is_active ? 'active' : 'inactive'}`}>
+                            {workflow.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                        <button
+                            onClick={handleWorkflowToggle}
+                            className={`toggle-btn ${workflow.is_active ? 'deactivate' : 'activate'}`}
+                        >
+                            {workflow.is_active ? 'Deactivate' : 'Activate'}
                         </button>
                     </div>
-                    <div className="steps-list">
-                        {workflow.steps?.sort((a, b) => a.step_order - b.step_order).map((step, index) => (
-                            <div key={step.id} className="step-card">
-                                <div className="step-header">
-                                    <span className="step-order">{index + 1}</span>
-                                    <h4>{step.step_label || step.step_name}</h4>
-                                    <div className="step-actions">
-                                        <button onClick={() => { setEditingStep(step); setIsNewStep(false); }} className="edit-btn">Edit</button>
-                                        <button onClick={() => handleDeleteStep(step.id)} className="delete-btn">Delete</button>
+
+                    <div className="workflow-steps">
+                        <div className="steps-header">
+                            <h3>Workflow Steps</h3>
+                            <button onClick={createNewStep} className="add-step-btn">
+                                + Add Step
+                            </button>
+                        </div>
+                        <div className="steps-list">
+                            {workflow.steps?.sort((a, b) => a.step_order - b.step_order).map((step, index) => (
+                                <div key={step.id} className="step-card">
+                                    <div className="step-header">
+                                        <span className="step-order">{index + 1}</span>
+                                        <h4>{step.step_label || step.step_name}</h4>
+                                        <div className="step-actions">
+                                            <button onClick={() => { setEditingStep(step); setIsNewStep(false); }} className="edit-btn">Edit</button>
+                                            <button onClick={() => handleDeleteStep(step.id)} className="delete-btn">Delete</button>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="step-details">
-                                    <div className="detail-row">
-                                        <span className="label">Role:</span>
-                                        <span className="value role-badge">{step.responsible_role}</span>
-                                    </div>
-                                    <div className="detail-row">
-                                        <span className="label">Action:</span>
-                                        <span className="value">{step.action_type}</span>
-                                    </div>
-                                    <div className="detail-row">
-                                        <span className="label">Timeout:</span>
-                                        <span className="value">{step.timeout_days} days → {step.timeout_action}</span>
-                                    </div>
-                                    {step.requires_document && (
+                                    <div className="step-details">
                                         <div className="detail-row">
-                                            <span className="label">Document:</span>
-                                            <span className="value">{step.document_type || 'Required'}</span>
+                                            <span className="label">Role:</span>
+                                            <span className="value role-badge">{step.responsible_role}</span>
                                         </div>
-                                    )}
-                                    {step.is_terminal && (
-                                        <div className="detail-row terminal">
-                                            <span className="label">Terminal:</span>
-                                            <span className="value">{step.terminal_status}</span>
+                                        <div className="detail-row">
+                                            <span className="label">Action:</span>
+                                            <span className="value">{step.action_type}</span>
                                         </div>
-                                    )}
+                                        <div className="detail-row">
+                                            <span className="label">Timeout:</span>
+                                            <span className="value">{step.timeout_days} days → {step.timeout_action}</span>
+                                        </div>
+                                        {step.requires_document && (
+                                            <div className="detail-row">
+                                                <span className="label">Document:</span>
+                                                <span className="value">{step.document_type || 'Required'}</span>
+                                            </div>
+                                        )}
+                                        {step.is_terminal && (
+                                            <div className="detail-row terminal">
+                                                <span className="label">Terminal:</span>
+                                                <span className="value">{step.terminal_status}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                        {(!workflow.steps || workflow.steps.length === 0) && (
-                            <div className="no-steps">
-                                <p>No steps configured. Click "Add Step" to create a workflow step.</p>
-                            </div>
-                        )}
+                            ))}
+                            {(!workflow.steps || workflow.steps.length === 0) && (
+                                <div className="no-steps">
+                                    <p>No steps configured. Click "Add Step" to create a workflow step.</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-
-                {editingStep && (
-                    <StepEditor
-                        step={editingStep}
-                        allSteps={workflow.steps || []}
-                        onSave={isNewStep ? handleAddStep : handleStepUpdate}
-                        onCancel={() => { setEditingStep(null); setIsNewStep(false); }}
-                        saving={saving}
-                        isNew={isNewStep}
-                    />
-                )}
             </div>
-        </div>
+
+            {editingStep && (
+                <StepEditor
+                    step={editingStep}
+                    allSteps={workflow.steps || []}
+                    onSave={isNewStep ? handleAddStep : handleStepUpdate}
+                    onCancel={() => { setEditingStep(null); setIsNewStep(false); }}
+                    saving={saving}
+                    isNew={isNewStep}
+                />
+            )}
+        </>,
+        document.body
     );
 };
 
@@ -254,6 +260,7 @@ const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCance
         setEditedStep(prev => ({ ...prev, [field]: value }));
     };
 
+    // StepEditor is already portalled because the parent is portalling the fragment containing it
     return (
         <div className="step-editor-overlay">
             <div className="step-editor-modal">
