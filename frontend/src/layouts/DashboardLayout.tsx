@@ -23,7 +23,7 @@ const DashboardLayout: React.FC = () => {
     }
 
     return (
-        <div className="flex min-h-screen bg-slate-50">
+        <div className="flex h-screen overflow-hidden bg-slate-50">
             <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
 
             <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
