@@ -32,6 +32,7 @@ func Migrate(db *gorm.DB) error {
 		&models.LeaveWorkflow{},
 		&models.WorkflowStep{},
 		&models.LeaveRequestWorkflowState{},
+		&models.BlackoutDate{},
 	)
 
 	if err != nil {

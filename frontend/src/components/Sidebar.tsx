@@ -149,6 +149,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                             <>
                                 <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">System</div>
                                 <NavItem to="/holidays" icon={CalendarDays}>Public Holidays</NavItem>
+                                <NavItem to="/admin/blackout-dates" icon={CalendarDays}>Blackout Dates</NavItem>
                                 <NavItem to="/leave-type-settings" icon={Layers}>Leave Types</NavItem>
                                 <NavItem to="/settings" icon={Settings}>System Settings</NavItem>
                             </>

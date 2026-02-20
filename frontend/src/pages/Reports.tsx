@@ -65,7 +65,7 @@ const Reports: React.FC = () => {
 
     // Helper to get count by status
     const getCount = (status: string) => {
-        if (!stats) return 0;
+        if (!stats || !stats.status_counts) return 0;
         const item = stats.status_counts.find(s => s.Status === status);
         return item ? item.Count : 0;
     };
@@ -253,7 +253,7 @@ const Reports: React.FC = () => {
                                                 >
                                                     {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
                                                         <option key={m} value={m}>
-                                                            {new Date(0, m - 1).toLocaleString('default', { month: 'long' })}
+                                                            {new Date(2000, m - 1).toLocaleString('default', { month: 'long' })}
                                                         </option>
                                                     ))}
                                                 </select>

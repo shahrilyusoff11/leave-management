@@ -16,6 +16,7 @@ import HRLeaves from './pages/HRLeaves';
 import SystemSettings from './pages/SystemSettings';
 import LeaveTypeSettings from './pages/LeaveTypeSettings';
 import DepartmentManagement from './pages/DepartmentManagement';
+import BlackoutDateManagement from './pages/BlackoutDateManagement';
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
             <Route path="/settings" element={<SystemSettings />} />
             <Route path="/leave-type-settings" element={<LeaveTypeSettings />} />
             <Route path="/delegations" element={<Delegations />} />
+            <Route path="/admin/blackout-dates" element={<BlackoutDateManagement />} />
             <Route path="/hr/departments" element={<DepartmentManagement />} />
           </Route>
 

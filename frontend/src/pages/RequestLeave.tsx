@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
@@ -41,14 +42,18 @@ interface LeaveTypeConfig {
     requires_attachment: boolean;
 }
 
+import type { BlackoutDate } from '../types';
+
 const RequestLeave: React.FC = () => {
     const navigate = useNavigate();
     const { showToast } = useToast();
+    const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
     const [leaveConfigs, setLeaveConfigs] = useState<LeaveTypeConfig[]>([]);
+    const [blackoutDates, setBlackoutDates] = useState<BlackoutDate[]>([]);
     const { register, handleSubmit, setValue, formState: { errors }, watch } = useForm<RequestFormData>({
         resolver: zodResolver(requestSchema),
         defaultValues: {
@@ -65,9 +70,10 @@ const RequestLeave: React.FC = () => {
         const fetchData = async () => {
             try {
                 const currentYear = new Date().getFullYear();
-                const [holidaysRes, configsRes] = await Promise.all([
+                const [holidaysRes, configsRes, blackoutRes] = await Promise.all([
                     api.get(`/public-holidays?year=${currentYear}`),
-                    api.get('/leave-type-configs')
+                    api.get('/leave-type-configs'),
+                    api.get('/blackout-dates')
                 ]);
 
                 if (Array.isArray(holidaysRes.data)) {
@@ -76,6 +82,10 @@ const RequestLeave: React.FC = () => {
 
                 if (Array.isArray(configsRes.data)) {
                     setLeaveConfigs(configsRes.data);
+                }
+
+                if (Array.isArray(blackoutRes.data)) {
+                    setBlackoutDates(blackoutRes.data);
                 }
             } catch (err) {
                 console.error('Failed to fetch data', err);
@@ -154,6 +164,30 @@ const RequestLeave: React.FC = () => {
         }
     };
 
+    const checkBlackoutDates = (start: Date, end: Date, type: string) => {
+        const overlapping = blackoutDates.filter(bd => {
+            const bdStart = new Date(bd.start_date);
+            const bdEnd = new Date(bd.end_date);
+            // Ignore time for comparison, just compare dates
+            bdStart.setHours(0, 0, 0, 0);
+            bdEnd.setHours(23, 59, 59, 999);
+            return end >= bdStart && start <= bdEnd;
+        });
+
+        for (const bd of overlapping) {
+            if (bd.apply_to_all) {
+                return `Leave period overlaps with a company-wide blackout date: ${bd.reason}`;
+            }
+            if (bd.department_id && user?.department_id === bd.department_id) {
+                return `Leave period overlaps with a department blackout date: ${bd.reason}`;
+            }
+            if (bd.leave_type && bd.leave_type === type) {
+                return `Leave period overlaps with a blackout date for this leave type: ${bd.reason}`;
+            }
+        }
+        return null;
+    };
+
     const onSubmit = async (data: RequestFormData) => {
         setIsLoading(true);
         setError(null);
@@ -166,6 +200,18 @@ const RequestLeave: React.FC = () => {
             const selectedConfig = leaveConfigs.find(c => c.leave_type === data.leave_type);
             if (selectedConfig?.requires_attachment && !data.attachment_url) {
                 setError(`Attachment is required for ${data.leave_type} leave`);
+                setIsLoading(false);
+                return;
+            }
+
+            const startD = new Date(data.start_date);
+            const endD = new Date(data.end_date);
+            startD.setHours(0, 0, 0, 0);
+            endD.setHours(23, 59, 59, 999);
+
+            const blackoutError = checkBlackoutDates(startD, endD, data.leave_type);
+            if (blackoutError) {
+                setError(blackoutError);
                 setIsLoading(false);
                 return;
             }

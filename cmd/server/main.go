@@ -89,6 +89,7 @@ func main() {
 	userService := services.NewUserService(db.DB, auditLogger, leaveTypeConfigService, leaveCalculator)
 	configService := services.NewConfigService(db.DB) // Initialize config service with DB
 	auditService := services.NewAuditService(db.DB)   // Initialize audit service with DB
+	blackoutService := services.NewBlackoutDateService(db.DB)
 
 	// Initialize cron jobs
 	cronJobs := cron.NewCronJobs(leaveService, emailService, workflowService, appLogger)
@@ -106,6 +107,7 @@ func main() {
 	uploadHandler := handlers.NewUploadHandler()
 	departmentHandler := handlers.NewDepartmentHandler(departmentService)
 	delegationHandler := handlers.NewDelegationHandler(delegationService, userService)
+	blackoutHandler := handlers.NewBlackoutDateHandler(blackoutService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtManager)
@@ -170,6 +172,8 @@ func main() {
 		protected.GET("/public-holidays", adminHandler.GetPublicHolidays)
 		// Leave type configs (accessible by all authenticated users)
 		protected.GET("/leave-type-configs", adminHandler.GetLeaveTypeConfigs)
+		// Blackout Dates (accessible by all users for checking calendar availability)
+		protected.GET("/blackout-dates", blackoutHandler.GetBlackoutDates)
 
 		// Manager routes
 		manager := protected.Group("")
@@ -228,6 +232,10 @@ func main() {
 			admin.GET("/audit-logs", adminHandler.GetAuditLogs)
 			admin.GET("/leave-type-configs", adminHandler.GetLeaveTypeConfigs)
 			admin.PUT("/leave-type-configs/:type", adminHandler.UpdateLeaveTypeConfig)
+			// Blackout Date routes
+			admin.POST("/blackout-dates", blackoutHandler.CreateBlackoutDate)
+			admin.PUT("/blackout-dates/:id", blackoutHandler.UpdateBlackoutDate)
+			admin.DELETE("/blackout-dates/:id", blackoutHandler.DeleteBlackoutDate)
 			// Workflow routes
 			admin.GET("/workflows", adminHandler.GetAllWorkflows)
 			admin.GET("/workflows/:type", adminHandler.GetWorkflow)

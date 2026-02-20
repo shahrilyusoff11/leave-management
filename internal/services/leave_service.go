@@ -22,6 +22,7 @@ type LeaveService struct {
 	leaveTypeConfigSvc *LeaveTypeConfigService
 	workflowSvc        *WorkflowService
 	departmentSvc      *DepartmentService
+	blackoutSvc        *BlackoutDateService
 }
 
 func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
@@ -35,6 +36,7 @@ func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
 		leaveTypeConfigSvc: leaveTypeConfigSvc,
 		workflowSvc:        workflowSvc,
 		departmentSvc:      departmentSvc,
+		blackoutSvc:        NewBlackoutDateService(db),
 	}
 }
 
@@ -57,6 +59,11 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 
 	// 2. Validate request (Uses LeaveTypeConfigService -> ls.db)
 	if err := ls.calculator.ValidateLeaveRequest(&user, request); err != nil {
+		return err
+	}
+
+	// 2.5 Check Blackout Dates
+	if err := ls.blackoutSvc.CheckIfBlackoutPeriod(request.StartDate, request.EndDate, user.DepartmentID, request.LeaveType); err != nil {
 		return err
 	}
 

@@ -151,3 +151,17 @@ export interface UserDelegation {
     created_at: string;
     updated_at: string;
 }
+
+export interface BlackoutDate {
+    id: string;
+    start_date: string;
+    end_date: string;
+    reason: string;
+    apply_to_all: boolean;
+    department_id?: string;
+    department?: Department;
+    leave_type?: LeaveType;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+}

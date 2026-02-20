@@ -474,7 +474,10 @@ const LeaveTypeSettings: React.FC = () => {
             {workflowLeaveType && (
                 <WorkflowEditor
                     leaveType={workflowLeaveType}
-                    onClose={() => setWorkflowLeaveType(null)}
+                    onClose={() => {
+                        setWorkflowLeaveType(null);
+                        fetchData(); // Refresh the workflows data when the editor closes
+                    }}
                 />
             )}
         </div>
