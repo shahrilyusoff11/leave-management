@@ -15,7 +15,7 @@ func TestDelegationFlow(t *testing.T) {
 	// Setup In-Memory DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	assert.NoError(t, err)
-	db.AutoMigrate(&models.User{}, &models.Department{}, &models.LeaveRequest{}, &models.LeaveRequestWorkflowState{}, &models.WorkflowStep{}, &models.UserDelegation{}, &models.HODDelegation{})
+	db.AutoMigrate(&models.User{}, &models.Department{}, &models.LeaveRequest{}, &models.LeaveRequestWorkflowState{}, &models.WorkflowStep{}, &models.UserDelegation{}, &models.HODDelegation{}, &models.Notification{})
 
 	// Setup Services
 	deptSvc := NewDepartmentService(db)

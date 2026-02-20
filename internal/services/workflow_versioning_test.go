@@ -18,7 +18,7 @@ func TestWorkflowVersioning(t *testing.T) {
 		t.Fatalf("failed to connect database: %v", err)
 	}
 
-	db.AutoMigrate(&models.LeaveWorkflow{}, &models.WorkflowStep{}, &models.LeaveRequest{}, &models.LeaveRequestWorkflowState{}, &models.User{})
+	db.AutoMigrate(&models.LeaveWorkflow{}, &models.WorkflowStep{}, &models.LeaveRequest{}, &models.LeaveRequestWorkflowState{}, &models.User{}, &models.Notification{})
 
 	delegationSvc := NewDelegationService(db)
 	workflowSvc := NewWorkflowService(db, nil, delegationSvc) // no dept svc needed

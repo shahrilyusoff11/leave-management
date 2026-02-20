@@ -61,6 +61,7 @@ func main() {
 
 	holidayService := services.NewHolidayService(db.DB)
 	leaveTypeConfigService := services.NewLeaveTypeConfigService(db.DB)
+	notificationService := services.NewNotificationService(db.DB)
 
 	// Seed default leave type configs if none exist
 	if err := leaveTypeConfigService.SeedDefaultConfigs(); err != nil {
@@ -108,6 +109,11 @@ func main() {
 	departmentHandler := handlers.NewDepartmentHandler(departmentService)
 	delegationHandler := handlers.NewDelegationHandler(delegationService, userService)
 	blackoutHandler := handlers.NewBlackoutDateHandler(blackoutService)
+	notificationHandler := handlers.NewNotificationHandler(notificationService)
+
+	// Inject notification service
+	leaveService.SetNotificationService(notificationService)
+	workflowService.SetNotificationService(notificationService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtManager)
@@ -174,6 +180,13 @@ func main() {
 		protected.GET("/leave-type-configs", adminHandler.GetLeaveTypeConfigs)
 		// Blackout Dates (accessible by all users for checking calendar availability)
 		protected.GET("/blackout-dates", blackoutHandler.GetBlackoutDates)
+
+		// Notifications
+		protected.GET("/notifications", notificationHandler.GetNotifications)
+		protected.GET("/notifications/stream", notificationHandler.StreamSSE)
+		protected.GET("/notifications/unread-count", notificationHandler.GetUnreadCount)
+		protected.PUT("/notifications/:id/read", notificationHandler.MarkAsRead)
+		protected.PUT("/notifications/read-all", notificationHandler.MarkAllAsRead)
 
 		// Manager routes
 		manager := protected.Group("")

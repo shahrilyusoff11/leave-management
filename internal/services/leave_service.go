@@ -23,6 +23,7 @@ type LeaveService struct {
 	workflowSvc        *WorkflowService
 	departmentSvc      *DepartmentService
 	blackoutSvc        *BlackoutDateService
+	notificationSvc    *NotificationService
 }
 
 func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
@@ -43,6 +44,11 @@ func NewLeaveService(db *gorm.DB, calculator *LeaveCalculator,
 // GetWorkflowService returns the workflow service for external access
 func (ls *LeaveService) GetWorkflowService() *WorkflowService {
 	return ls.workflowSvc
+}
+
+// SetNotificationService injects the notification service after initialization
+func (ls *LeaveService) SetNotificationService(ns *NotificationService) {
+	ls.notificationSvc = ns
 }
 
 // GetDB returns the database connection for external service creation
@@ -85,7 +91,7 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 	}
 
 	// 4. Start Transaction for Writes
-	return ls.db.Transaction(func(tx *gorm.DB) error {
+	err = ls.db.Transaction(func(tx *gorm.DB) error {
 		// Check balance for leave types that deduct from balance
 		if request.LeaveType == models.LeaveTypeAnnual ||
 			request.LeaveType == models.LeaveTypeEmergency ||
@@ -172,6 +178,20 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 
 		return nil
 	})
+
+	if err == nil && ls.notificationSvc != nil {
+		var state models.LeaveRequestWorkflowState
+		if dbErr := ls.db.Preload("CurrentStep").Where("leave_request_id = ?", request.ID).First(&state).Error; dbErr == nil {
+			if responsibles, respErr := ls.workflowSvc.GetResponsibleUsers(&state); respErr == nil {
+				for _, u := range responsibles {
+					msg := fmt.Sprintf("%s %s submitted a %s leave request requiring your action.", user.FirstName, user.LastName, request.LeaveType)
+					_ = ls.notificationSvc.SendNotification(u.ID, "New Leave Request", msg, models.NotificationTypeLeave, &request.ID)
+				}
+			}
+		}
+	}
+
+	return err
 }
 
 // ProcessWorkflowAction handles a workflow action and ensures balance is deducted upon final approval
@@ -267,17 +287,32 @@ func (ls *LeaveService) ProcessWorkflowAction(requestID, actorID uuid.UUID, acti
 	}
 
 	// 4. Notifications (Outside Transaction)
-	if ls.emailService != nil {
-		if updatedState.IsComplete {
+	if updatedState.IsComplete {
+		// Send notification to the applicant
+		if ls.notificationSvc != nil {
+			msg := fmt.Sprintf("Your %s leave request has been %s.", request.LeaveType, request.Status)
+			if request.Status == models.StatusRejected && request.RejectionReason != "" {
+				msg += fmt.Sprintf(" Reason: %s", request.RejectionReason)
+			}
+			_ = ls.notificationSvc.SendNotification(request.UserID, "Leave Request Update", msg, models.NotificationTypeLeave, &request.ID)
+		}
+
+		if ls.emailService != nil {
 			if updatedState.FinalStatus == models.StatusApproved {
 				_ = ls.emailService.SendApprovalNotification(&request)
 			}
-		} else if updatedState.CurrentStep != nil {
-			// Workflow continues - Find next approvers
-			nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
-			if err == nil {
-				for _, user := range nextResponsibles {
-					_ = ls.emailService.SendActionRequiredEmail(user, &request, "Pending Action")
+		}
+	} else if updatedState.CurrentStep != nil {
+		// Workflow continues - Find next approvers
+		nextResponsibles, err := ls.workflowSvc.GetResponsibleUsers(updatedState)
+		if err == nil {
+			for _, u := range nextResponsibles {
+				if ls.notificationSvc != nil {
+					msg := fmt.Sprintf("Action required on %s %s's %s leave request.", request.User.FirstName, request.User.LastName, request.LeaveType)
+					_ = ls.notificationSvc.SendNotification(u.ID, "Pending Action", msg, models.NotificationTypeWorkflow, &request.ID)
+				}
+				if ls.emailService != nil {
+					_ = ls.emailService.SendActionRequiredEmail(u, &request, "Pending Action")
 				}
 			}
 		}

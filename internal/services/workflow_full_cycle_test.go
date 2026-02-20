@@ -39,6 +39,7 @@ func TestFullWorkflowCycle(t *testing.T) {
 		&models.HODDelegation{},
 		&models.PublicHoliday{},
 		&models.BlackoutDate{},
+		&models.Notification{},
 	)
 	require.NoError(t, err)
 

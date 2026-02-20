@@ -17,7 +17,7 @@ func TestTimeoutLogic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
-	db.AutoMigrate(&models.User{}, &models.LeaveRequest{}, &models.LeaveWorkflow{}, &models.WorkflowStep{}, &models.LeaveRequestWorkflowState{}, &models.LeaveBalance{}, &models.Chronology{})
+	db.AutoMigrate(&models.User{}, &models.LeaveRequest{}, &models.LeaveWorkflow{}, &models.WorkflowStep{}, &models.LeaveRequestWorkflowState{}, &models.LeaveBalance{}, &models.Chronology{}, &models.Notification{})
 
 	// Setup Service
 	delegationSvc := services.NewDelegationService(db)

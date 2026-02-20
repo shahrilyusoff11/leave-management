@@ -32,6 +32,7 @@ func TestChronologyAndBalance(t *testing.T) {
 		&models.WorkflowStep{},
 		&models.LeaveRequestWorkflowState{},
 		&models.Chronology{},
+		&models.Notification{},
 		&models.Department{},
 	)
 	if err != nil {

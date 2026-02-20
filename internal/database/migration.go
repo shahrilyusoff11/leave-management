@@ -33,6 +33,7 @@ func Migrate(db *gorm.DB) error {
 		&models.WorkflowStep{},
 		&models.LeaveRequestWorkflowState{},
 		&models.BlackoutDate{},
+		&models.Notification{},
 	)
 
 	if err != nil {
@@ -41,6 +42,7 @@ func Migrate(db *gorm.DB) error {
 
 	// Create indexes
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_leave_requests_user_id ON leave_requests(user_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_leave_requests_approver_id ON leave_requests(approver_id)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_leave_balance_user_year ON leave_balances(user_id, year)")

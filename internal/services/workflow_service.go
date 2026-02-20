@@ -12,9 +12,10 @@ import (
 
 // WorkflowService handles leave workflow operations
 type WorkflowService struct {
-	db            *gorm.DB
-	departmentSvc *DepartmentService
-	delegationSvc *DelegationService
+	db              *gorm.DB
+	departmentSvc   *DepartmentService
+	delegationSvc   *DelegationService
+	notificationSvc *NotificationService
 }
 
 func NewWorkflowService(db *gorm.DB, departmentSvc *DepartmentService, delegationSvc *DelegationService) *WorkflowService {
@@ -23,6 +24,11 @@ func NewWorkflowService(db *gorm.DB, departmentSvc *DepartmentService, delegatio
 		departmentSvc: departmentSvc,
 		delegationSvc: delegationSvc,
 	}
+}
+
+// SetNotificationService injects the notification service after initialization
+func (ws *WorkflowService) SetNotificationService(ns *NotificationService) {
+	ws.notificationSvc = ns
 }
 
 // GetWorkflowForLeaveType returns the active workflow configuration for a leave type (used at runtime)
