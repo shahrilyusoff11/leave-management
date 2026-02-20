@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import NotificationBell from '../components/NotificationBell';
+import UserMenu from '../components/UserMenu';
 
 const DashboardLayout: React.FC = () => {
     const { isAuthenticated, isLoading } = useAuth();
@@ -36,8 +37,10 @@ const DashboardLayout: React.FC = () => {
                         <Menu className="h-6 w-6" />
                     </button>
                     <span className="ml-3 font-semibold text-slate-900 lg:hidden">Leave Management</span>
-                    <div className="ml-auto flex items-center">
+                    <div className="ml-auto flex items-center gap-2">
                         <NotificationBell />
+                        <div className="w-px h-6 bg-slate-200 mx-1 hidden md:block" />
+                        <UserMenu />
                     </div>
                 </header>
 

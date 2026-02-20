@@ -1,12 +1,11 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
     LayoutDashboard,
     CalendarDays,
     PlusCircle,
     Users,
     ShieldCheck,
-    LogOut,
     X,
     FileText,
     Settings,
@@ -16,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils/cn';
-import { Button } from './ui/Button';
 import type { UserRole } from '../types';
 
 interface SidebarProps {
@@ -37,26 +35,10 @@ const isAdmin = (role?: UserRole) =>
 const isSysAdmin = (role?: UserRole) =>
     role === 'sysadmin';
 
-const getRoleLabel = (role?: UserRole) => {
-    switch (role) {
-        case 'sysadmin': return 'System Administrator';
-        case 'admin': return 'Administrator';
-        case 'hr': return 'Human Resources';
-        case 'hod': return 'Head of Department';
-        case 'manager': return 'Manager';
-        case 'staff': return 'Staff';
-        default: return role || 'Unknown';
-    }
-};
+
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-    const { user, logout } = useAuth();
-    const navigate = useNavigate();
-
-    const handleLogout = () => {
-        logout();
-        navigate('/login');
-    };
+    const { user } = useAuth();
 
     const NavItem = ({ to, icon: Icon, children }: { to: string, icon: any, children: React.ReactNode }) => (
         <NavLink
@@ -103,24 +85,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         </button>
                     </div>
 
-                    {/* User Info */}
-                    <div className="p-4 mx-4 mt-4 rounded-xl bg-slate-50 border border-slate-100">
-                        <p className="font-semibold text-sm text-slate-900">{user?.first_name} {user?.last_name}</p>
-                        <p className="text-xs text-slate-500">{getRoleLabel(user?.role)}</p>
-                        {(user as any)?.department_ref?.name && (
-                            <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                                <Building className="h-3 w-3" />
-                                {(user as any).department_ref.name}
-                            </p>
-                        )}
-                    </div>
+
 
                     {/* Navigation */}
                     <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
                         <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">Menu</div>
 
                         <NavItem to="/dashboard" icon={LayoutDashboard}>Dashboard</NavItem>
-                        <NavItem to="/profile" icon={User}>My Profile</NavItem>
                         <NavItem to="/my-leaves" icon={CalendarDays}>My Leaves</NavItem>
                         <NavItem to="/delegations" icon={User}>My Delegations</NavItem>
                         <NavItem to="/request-leave" icon={PlusCircle}>Request Leave</NavItem>
@@ -164,13 +135,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         )}
                     </nav>
 
-                    {/* Footer */}
-                    <div className="p-4 border-t border-slate-100">
-                        <Button variant="ghost" className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700" onClick={handleLogout}>
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Sign Out
-                        </Button>
-                    </div>
                 </div>
             </aside>
         </>
