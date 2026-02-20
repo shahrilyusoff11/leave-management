@@ -14,6 +14,8 @@ const requestSchema = z.object({
     leave_type: z.enum(['annual', 'sick', 'maternity', 'paternity', 'emergency', 'unpaid', 'unrecorded', 'hospitalization']),
     start_date: z.string().min(1, 'Start date is required'),
     end_date: z.string().min(1, 'End date is required'),
+    is_half_day: z.boolean().optional(),
+    half_day_period: z.enum(['AM', 'PM', '']).optional(),
     reason: z.string().min(1, 'Reason is required'),
     special_leave_type: z.string().optional(),
     attachment_url: z.string().optional(),
@@ -26,6 +28,15 @@ const requestSchema = z.object({
     }, {
         message: "Specific reason is required for Unrecorded Leave",
         path: ["special_leave_type"],
+    })
+    .refine((data) => {
+        if (data.is_half_day && !data.half_day_period) {
+            return false;
+        }
+        return true;
+    }, {
+        message: "Session (AM/PM) is required for Half-Day leave",
+        path: ["half_day_period"],
     });
 
 type RequestFormData = z.infer<typeof requestSchema>;
@@ -64,6 +75,14 @@ const RequestLeave: React.FC = () => {
     const startDate = watch('start_date');
     const endDate = watch('end_date');
     const leaveType = watch('leave_type');
+    const isHalfDay = watch('is_half_day');
+
+    // Sync end date to start date when half day is selected
+    useEffect(() => {
+        if (isHalfDay && startDate) {
+            setValue('end_date', startDate);
+        }
+    }, [isHalfDay, startDate, setValue]);
 
     // Fetch public holidays and leave configs on mount
     useEffect(() => {
@@ -111,6 +130,7 @@ const RequestLeave: React.FC = () => {
 
     const calculateDuration = () => {
         if (!startDate || !endDate) return 0;
+        if (isHalfDay) return 0.5;
         const start = new Date(startDate);
         const end = new Date(endDate);
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
@@ -283,6 +303,18 @@ const RequestLeave: React.FC = () => {
                                 </div>
                             )}
 
+                            <div className="flex items-center gap-2 mb-2">
+                                <input
+                                    type="checkbox"
+                                    id="is_half_day"
+                                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                                    {...register('is_half_day')}
+                                />
+                                <label htmlFor="is_half_day" className="text-sm font-medium text-slate-700">
+                                    Apply for Half-Day
+                                </label>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <Input
                                     type="date"
@@ -291,13 +323,28 @@ const RequestLeave: React.FC = () => {
                                     min={new Date().toISOString().split('T')[0]}
                                     error={errors.start_date?.message}
                                 />
-                                <Input
-                                    type="date"
-                                    label="End Date"
-                                    {...register('end_date')}
-                                    min={startDate || new Date().toISOString().split('T')[0]}
-                                    error={errors.end_date?.message}
-                                />
+                                {!isHalfDay ? (
+                                    <Input
+                                        type="date"
+                                        label="End Date"
+                                        {...register('end_date')}
+                                        min={startDate || new Date().toISOString().split('T')[0]}
+                                        error={errors.end_date?.message}
+                                    />
+                                ) : (
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Session</label>
+                                        <select
+                                            {...register('half_day_period')}
+                                            className="flex h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+                                        >
+                                            <option value="">Select Session...</option>
+                                            <option value="AM">Morning (AM)</option>
+                                            <option value="PM">Afternoon (PM)</option>
+                                        </select>
+                                        {errors.half_day_period && <p className="mt-1 text-sm text-red-500">{errors.half_day_period.message}</p>}
+                                    </div>
+                                )}
                             </div>
 
                             {startDate && endDate && (

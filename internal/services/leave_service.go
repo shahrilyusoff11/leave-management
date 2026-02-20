@@ -73,7 +73,16 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 	if err != nil {
 		return err
 	}
-	request.DurationDays = workingDays
+
+	if request.IsHalfDay {
+		if workingDays == 0 {
+			return errors.New("cannot apply half-day leave on a non-working day")
+		}
+		request.DurationDays = 0.5
+		request.EndDate = request.StartDate // enforce same-day
+	} else {
+		request.DurationDays = workingDays
+	}
 
 	// 4. Start Transaction for Writes
 	return ls.db.Transaction(func(tx *gorm.DB) error {

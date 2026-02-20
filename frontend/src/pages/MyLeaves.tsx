@@ -157,8 +157,17 @@ const MyLeaves: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-4 text-slate-600 whitespace-nowrap">
                                                 <div className="flex flex-col">
-                                                    <span>{format(new Date(req.start_date), 'MMM d, yyyy')}</span>
-                                                    <span className="text-xs text-slate-400">to {format(new Date(req.end_date), 'MMM d, yyyy')}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{format(new Date(req.start_date), 'MMM d, yyyy')}</span>
+                                                        {req.is_half_day && (
+                                                            <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold bg-brand-50 text-brand-700">
+                                                                Half-Day {req.half_day_period}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {!req.is_half_day && (
+                                                        <span className="text-xs text-slate-400">to {format(new Date(req.end_date), 'MMM d, yyyy')}</span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4 text-slate-600">

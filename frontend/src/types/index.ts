@@ -26,6 +26,8 @@ export interface LeaveRequest {
     leave_type: LeaveType;
     start_date: string;
     end_date: string;
+    is_half_day?: boolean;
+    half_day_period?: string; // "AM" or "PM"
     duration_days: number;
     reason: string;
     attachment_url?: string;

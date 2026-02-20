@@ -39,7 +39,9 @@ type LeaveRequest struct {
 	LeaveType              LeaveType    `gorm:"type:varchar(20);not null" json:"leave_type"`
 	StartDate              time.Time    `gorm:"not null" json:"start_date"`
 	EndDate                time.Time    `gorm:"not null" json:"end_date"`
-	DurationDays           float64      `gorm:"not null" json:"duration_days"` // Float for half-day leaves
+	IsHalfDay              bool         `gorm:"default:false" json:"is_half_day"`
+	HalfDayPeriod          string       `gorm:"type:varchar(2)" json:"half_day_period"` // "AM" or "PM"
+	DurationDays           float64      `gorm:"not null" json:"duration_days"`          // Float for half-day leaves
 	Reason                 string       `json:"reason"`
 	Status                 LeaveStatus  `gorm:"type:varchar(20);default:'pending'" json:"status"`
 	ApproverID             *uuid.UUID   `json:"approver_id"`

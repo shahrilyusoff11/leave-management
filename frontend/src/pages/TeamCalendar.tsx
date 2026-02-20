@@ -111,6 +111,7 @@ const TeamCalendar: React.FC = () => {
                                 title={`${leave.user?.first_name} ${leave.user?.last_name} - ${leave.leave_type}`}
                             >
                                 <span className="font-semibold">{leave.user?.first_name}</span> - {leave.leave_type.slice(0, 3).toUpperCase()}
+                                {leave.is_half_day && ` (${leave.half_day_period})`}
                             </div>
                         );
                     })}
@@ -183,7 +184,10 @@ const TeamCalendar: React.FC = () => {
                                     <p className="font-semibold text-lg text-slate-900">
                                         {selectedLeave.user?.first_name} {selectedLeave.user?.last_name}
                                     </p>
-                                    <p className="text-sm text-slate-500 capitalize">{selectedLeave.leave_type.replace('_', ' ')} Leave</p>
+                                    <p className="text-sm text-slate-500 capitalize">
+                                        {selectedLeave.leave_type.replace('_', ' ')} Leave
+                                        {selectedLeave.is_half_day && ` (Half-Day ${selectedLeave.half_day_period})`}
+                                    </p>
                                 </div>
                                 <Badge variant={selectedLeave.status === 'approved' ? 'success' : 'warning'}>
                                     {selectedLeave.status}

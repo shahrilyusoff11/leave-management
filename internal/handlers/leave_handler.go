@@ -23,6 +23,8 @@ type CreateLeaveRequest struct {
 	LeaveType              models.LeaveType `json:"leave_type" binding:"required"`
 	StartDate              time.Time        `json:"start_date" binding:"required"`
 	EndDate                time.Time        `json:"end_date" binding:"required"`
+	IsHalfDay              bool             `json:"is_half_day"`
+	HalfDayPeriod          string           `json:"half_day_period"`
 	Reason                 string           `json:"reason" binding:"required"`
 	AttachmentURL          string           `json:"attachment_url"`
 	UnrecordedLeaveSubtype string           `json:"unrecorded_leave_subtype"`
@@ -54,6 +56,8 @@ func (h *LeaveHandler) CreateLeaveRequest(c *gin.Context) {
 		LeaveType:              req.LeaveType,
 		StartDate:              req.StartDate,
 		EndDate:                req.EndDate,
+		IsHalfDay:              req.IsHalfDay,
+		HalfDayPeriod:          req.HalfDayPeriod,
 		Reason:                 req.Reason,
 		AttachmentURL:          req.AttachmentURL,
 		UnrecordedLeaveSubtype: req.UnrecordedLeaveSubtype,
