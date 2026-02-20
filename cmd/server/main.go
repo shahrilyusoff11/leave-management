@@ -183,8 +183,6 @@ func main() {
 		{
 			manager.GET("/team/leave-requests", leaveHandler.GetTeamLeaveRequests)
 			manager.GET("/team/calendar", leaveHandler.GetTeamCalendar)
-			manager.PUT("/leave-requests/:id/approve", leaveHandler.ApproveLeaveRequest)
-			manager.PUT("/leave-requests/:id/reject", leaveHandler.RejectLeaveRequest)
 			manager.POST("/leave-requests/:id/workflow-action", leaveHandler.PerformWorkflowAction)
 			manager.POST("/leave-requests/:id/convert", leaveHandler.ConvertLeaveType)
 		}

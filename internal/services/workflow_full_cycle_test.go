@@ -38,6 +38,7 @@ func TestFullWorkflowCycle(t *testing.T) {
 		&models.Department{},
 		&models.HODDelegation{},
 		&models.PublicHoliday{},
+		&models.BlackoutDate{},
 	)
 	require.NoError(t, err)
 
@@ -205,9 +206,12 @@ func TestFullWorkflowCycle(t *testing.T) {
 	assert.Len(t, responsibles, 1)
 	assert.Equal(t, manager.ID, responsibles[0].ID)
 
-	// Action
-	err = leaveSvc.ApproveLeave(req.ID, manager.ID, "Approved by Manager")
-	require.NoError(t, err)
+	// 4. Manager approves
+	_, err = leaveSvc.ProcessWorkflowAction(req.ID, manager.ID, models.StepActionApproved, "Approved by Manager")
+	assert.NoError(t, err)
+
+	var state models.LeaveRequestWorkflowState
+	err = db.Preload("CurrentStep").First(&state, "leave_request_id = ?", req.ID).Error
 
 	fmt.Println("DEBUG: Manager Approved")
 
@@ -217,10 +221,11 @@ func TestFullWorkflowCycle(t *testing.T) {
 	assert.Equal(t, models.StatusPending, savedReq.Status) // Still pending
 	assert.Equal(t, "Director Approval", savedReq.WorkflowState.CurrentStep.StepName)
 
-	// Step 3.3: Director Approves (Final)
-	// Action
-	err = leaveSvc.ApproveLeave(req.ID, director.ID, "Approved by Director")
-	require.NoError(t, err)
+	// 6. Director approves
+	_, err = leaveSvc.ProcessWorkflowAction(req.ID, director.ID, models.StepActionApproved, "Approved by Director")
+	assert.NoError(t, err)
+
+	err = db.First(&state, "leave_request_id = ?", req.ID).Error
 
 	fmt.Println("DEBUG: Director Approved")
 

@@ -119,54 +119,6 @@ func (h *LeaveHandler) CancelLeaveRequest(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Leave request cancelled"})
 }
 
-type ApproveRejectRequest struct {
-	Comment string `json:"comment"`
-}
-
-func (h *LeaveHandler) ApproveLeaveRequest(c *gin.Context) {
-	approverID := c.MustGet("user_id").(uuid.UUID)
-	requestID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
-		return
-	}
-
-	var req ApproveRejectRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.leaveService.ApproveLeave(requestID, approverID, req.Comment); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Leave request approved"})
-}
-
-func (h *LeaveHandler) RejectLeaveRequest(c *gin.Context) {
-	approverID := c.MustGet("user_id").(uuid.UUID)
-	requestID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
-		return
-	}
-
-	var req ApproveRejectRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.leaveService.RejectLeave(requestID, approverID, req.Comment); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Leave request rejected"})
-}
-
 func (h *LeaveHandler) GetTeamLeaveRequests(c *gin.Context) {
 	managerID := c.MustGet("user_id").(uuid.UUID)
 
@@ -280,38 +232,13 @@ func (h *LeaveHandler) PerformWorkflowAction(c *gin.Context) {
 		return
 	}
 
-	workflowSvc := h.leaveService.GetWorkflowService()
-	state, err := workflowSvc.ProcessAction(requestID, action, actorID, req.Comment)
+	state, err := h.leaveService.ProcessWorkflowAction(requestID, actorID, action, req.Comment)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Also update leave request status if workflow is complete
-	if state.IsComplete {
-		h.updateLeaveRequestFromWorkflow(requestID, state)
-	}
-
 	c.JSON(http.StatusOK, state)
-}
-
-// updateLeaveRequestFromWorkflow syncs the leave request status with workflow final status
-func (h *LeaveHandler) updateLeaveRequestFromWorkflow(requestID uuid.UUID, state *models.LeaveRequestWorkflowState) {
-	request, err := h.leaveService.GetLeaveRequest(requestID)
-	if err != nil {
-		return
-	}
-
-	request.Status = state.FinalStatus
-	now := time.Now()
-	switch state.FinalStatus {
-	case models.StatusApproved:
-		request.ApprovedAt = &now
-	case models.StatusRejected:
-		request.RejectedAt = &now
-	}
-
-	h.leaveService.GetDB().Save(request)
 }
 
 // ConvertLeaveType converts a leave request to a different type (e.g., AL to EL)

@@ -134,7 +134,7 @@ func TestChronologyAndBalance(t *testing.T) {
 	db.Save(&request)
 
 	// 4. Step 1: HOD Approve
-	err = leaveSvc.ApproveLeave(reqID, managerID, "HOD Approved")
+	_, err = leaveSvc.ProcessWorkflowAction(reqID, managerID, models.StepActionApproved, "HOD Approved")
 	if err != nil {
 		t.Fatalf("HOD Approve failed: %v", err)
 	}
@@ -159,9 +159,9 @@ func TestChronologyAndBalance(t *testing.T) {
 	// 5. Step 2: HR Approve
 	// Reload state to get current step
 	db.First(state, "id = ?", state.ID)
-	// Manually update struct for test context if needed, but ApproveLeave fetches it
+	// Manually update struct for test context if needed, but ProcessWorkflowAction fetches it
 
-	err = leaveSvc.ApproveLeave(reqID, hrID, "HR Approved")
+	_, err = leaveSvc.ProcessWorkflowAction(reqID, hrID, models.StepActionApproved, "HR Approved")
 	if err != nil {
 		t.Fatalf("HR Approve failed: %v", err)
 	}

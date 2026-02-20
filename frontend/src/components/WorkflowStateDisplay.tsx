@@ -205,12 +205,12 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                             <select
                                 value={conversionType}
                                 onChange={(e) => setConversionType(e.target.value)}
-                                className="w-full text-sm border-slate-300 rounded-md focus:ring-brand-500 focus:border-brand-500"
+                                className="w-full text-sm text-slate-900 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-brand-500 focus:border-brand-500 py-2 px-3"
                             >
-                                <option value="unpaid">Unpaid Leave</option>
-                                <option value="emergency">Emergency Leave</option>
-                                <option value="annual">Annual Leave</option>
-                                <option value="sick">Sick Leave</option>
+                                <option value="unpaid" className="text-slate-900">Unpaid Leave</option>
+                                <option value="emergency" className="text-slate-900">Emergency Leave</option>
+                                <option value="annual" className="text-slate-900">Annual Leave</option>
+                                <option value="sick" className="text-slate-900">Sick Leave</option>
                             </select>
                         </div>
                     )}
@@ -223,7 +223,7 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                             value={actionComment}
                             onChange={e => setActionComment(e.target.value)}
                             placeholder={selectedAction === 'convert_leave_type' ? "State reason for conversion..." : "Add a comment..."}
-                            className="action-comment-input w-full border-slate-300 rounded-md text-sm"
+                            className="action-comment-input w-full border border-slate-300 rounded-md text-sm text-slate-900 bg-white p-2 shadow-sm focus:ring-brand-500 focus:border-brand-500"
                             rows={3}
                         />
                     </div>
