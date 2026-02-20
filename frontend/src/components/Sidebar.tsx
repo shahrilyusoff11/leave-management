@@ -130,6 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                             <>
                                 <div className="mt-6 mb-2 px-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Management</div>
                                 <NavItem to="/team-leaves" icon={Users}>Team Requests</NavItem>
+                                <NavItem to="/team-calendar" icon={CalendarDays}>Team Calendar</NavItem>
                             </>
                         )}
 

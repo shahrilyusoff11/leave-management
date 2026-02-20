@@ -915,13 +915,14 @@ func (s *WorkflowService) SeedDefaultWorkflows() error {
 func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 	workflowID := uuid.New()
 	hodStepID := uuid.New()
+	hrFallbackStepID := uuid.New()
 	approvedStepID := uuid.New()
 
 	workflow := models.LeaveWorkflow{
 		ID:           workflowID,
 		LeaveType:    models.LeaveTypeAnnual,
 		WorkflowName: "Annual Leave Approval",
-		Description:  "HOD approval with 7-day timeout for conversion decision",
+		Description:  "HOD approval with 7-day timeout for HR Fallback",
 		FirstStepID:  &hodStepID,
 		IsActive:     true,
 		CreatedAt:    time.Now(),
@@ -930,15 +931,30 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 
 	steps := []models.WorkflowStep{
 		{
-			ID:              hodStepID,
-			WorkflowID:      workflowID,
-			StepOrder:       1,
-			StepName:        "hod_approval",
-			StepLabel:       "HOD Approval",
-			ResponsibleRole: models.RoleHOD,
-			ActionType:      models.ActionApprove,
-			TimeoutDays:     7,
-			// Simplified: No auto-actions, just wait for approval
+			ID:                hodStepID,
+			WorkflowID:        workflowID,
+			StepOrder:         1,
+			StepName:          "hod_approval",
+			StepLabel:         "HOD Approval",
+			ResponsibleRole:   models.RoleHOD,
+			ActionType:        models.ActionApprove,
+			TimeoutDays:       7,
+			TimeoutAction:     models.TimeoutFallback,
+			FallbackStepID:    &hrFallbackStepID,
+			NextStepOnApprove: &approvedStepID,
+			NotifyRoles:       models.JSONArray{"manager"},
+			CreatedAt:         time.Now(),
+			UpdatedAt:         time.Now(),
+		},
+		{
+			ID:                hrFallbackStepID,
+			WorkflowID:        workflowID,
+			StepOrder:         2,
+			StepName:          "hr_fallback",
+			StepLabel:         "HR Decision (HOD Timeout)",
+			ResponsibleRole:   models.RoleHR,
+			ActionType:        models.ActionApprove,
+			TimeoutDays:       3, // Optional: give HR 3 days
 			NextStepOnApprove: &approvedStepID,
 			NotifyRoles:       models.JSONArray{"manager"},
 			CreatedAt:         time.Now(),
@@ -947,10 +963,10 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 		{
 			ID:              approvedStepID,
 			WorkflowID:      workflowID,
-			StepOrder:       2,
+			StepOrder:       3,
 			StepName:        "approved",
 			StepLabel:       "Approved",
-			ResponsibleRole: models.RoleHOD,
+			ResponsibleRole: models.RoleHR, // Just a terminal role label
 			ActionType:      models.ActionApprove,
 			IsTerminal:      true,
 			TerminalStatus:  models.StatusApproved,
@@ -974,6 +990,7 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 func (s *WorkflowService) seedEmergencyLeaveWorkflow() error {
 	workflowID := uuid.New()
 	hodStepID := uuid.New()
+	hrFallbackStepID := uuid.New()
 	hrStepID := uuid.New()
 	approvedStepID := uuid.New()
 	unpaidStepID := uuid.New()
@@ -991,15 +1008,30 @@ func (s *WorkflowService) seedEmergencyLeaveWorkflow() error {
 
 	steps := []models.WorkflowStep{
 		{
-			ID:              hodStepID,
-			WorkflowID:      workflowID,
-			StepOrder:       1,
-			StepName:        "hod_approval",
-			StepLabel:       "HOD Approval",
-			ResponsibleRole: models.RoleHOD,
-			ActionType:      models.ActionApprove,
-			TimeoutDays:     7,
-			// Simplified: No escalation
+			ID:                hodStepID,
+			WorkflowID:        workflowID,
+			StepOrder:         1,
+			StepName:          "hod_approval",
+			StepLabel:         "HOD Approval",
+			ResponsibleRole:   models.RoleHOD,
+			ActionType:        models.ActionApprove,
+			TimeoutDays:       7,
+			TimeoutAction:     models.TimeoutFallback,
+			FallbackStepID:    &hrFallbackStepID,
+			NextStepOnApprove: &hrStepID,
+			NotifyRoles:       models.JSONArray{"manager"},
+			CreatedAt:         time.Now(),
+			UpdatedAt:         time.Now(),
+		},
+		{
+			ID:                hrFallbackStepID,
+			WorkflowID:        workflowID,
+			StepOrder:         2,
+			StepName:          "hr_fallback",
+			StepLabel:         "HR Decision (HOD Timeout)",
+			ResponsibleRole:   models.RoleHR,
+			ActionType:        models.ActionApprove,
+			TimeoutDays:       3,
 			NextStepOnApprove: &hrStepID,
 			NotifyRoles:       models.JSONArray{"manager"},
 			CreatedAt:         time.Now(),
@@ -1008,7 +1040,7 @@ func (s *WorkflowService) seedEmergencyLeaveWorkflow() error {
 		{
 			ID:                hrStepID,
 			WorkflowID:        workflowID,
-			StepOrder:         2,
+			StepOrder:         3,
 			StepName:          "hr_review",
 			StepLabel:         "HR Review",
 			ResponsibleRole:   models.RoleHR,
@@ -1023,7 +1055,7 @@ func (s *WorkflowService) seedEmergencyLeaveWorkflow() error {
 		{
 			ID:              approvedStepID,
 			WorkflowID:      workflowID,
-			StepOrder:       3,
+			StepOrder:       4,
 			StepName:        "approved",
 			StepLabel:       "Approved",
 			ResponsibleRole: models.RoleHR,
@@ -1037,7 +1069,7 @@ func (s *WorkflowService) seedEmergencyLeaveWorkflow() error {
 		{
 			ID:              unpaidStepID,
 			WorkflowID:      workflowID,
-			StepOrder:       4,
+			StepOrder:       5,
 			StepName:        "convert_unpaid",
 			StepLabel:       "Converted to Unpaid Leave",
 			ResponsibleRole: models.RoleHR,

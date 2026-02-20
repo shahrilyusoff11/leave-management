@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import type { LeaveRequestWorkflowState } from '../types';
 import { Badge } from './ui/Badge';
@@ -35,6 +36,9 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
     onActionComplete,
     showActions = true
 }) => {
+    const { user } = useAuth();
+    const isHR = user?.role === 'hr' || user?.role === 'admin' || user?.role === 'sysadmin';
+
     const { showToast } = useToast();
     const [workflowState, setWorkflowState] = useState<LeaveRequestWorkflowState | null>(null);
     const [loading, setLoading] = useState(true);
@@ -42,6 +46,7 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
     const [actionModalOpen, setActionModalOpen] = useState(false);
     const [selectedAction, setSelectedAction] = useState<string>('');
     const [actionComment, setActionComment] = useState('');
+    const [conversionType, setConversionType] = useState('unpaid');
 
     const fetchWorkflowState = useCallback(async () => {
         try {
@@ -62,13 +67,25 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
     const handleAction = async () => {
         if (!selectedAction) return;
 
+        if (selectedAction === 'convert_leave_type' && !actionComment) {
+            showToast('Reason is required for converting leave type', 'error');
+            return;
+        }
+
         setActionLoading(true);
         try {
-            await api.post(`/leave-requests/${requestId}/workflow-action`, {
-                action: selectedAction,
-                comment: actionComment
-            });
-            showToast(`Action "${selectedAction}" completed successfully`, 'success');
+            if (selectedAction === 'convert_leave_type') {
+                await api.post(`/leave-requests/${requestId}/convert`, {
+                    new_type: conversionType,
+                    reason: actionComment
+                });
+            } else {
+                await api.post(`/leave-requests/${requestId}/workflow-action`, {
+                    action: selectedAction,
+                    comment: actionComment
+                });
+            }
+            showToast(`Action completed successfully`, 'success');
             setActionModalOpen(false);
             setActionComment('');
             fetchWorkflowState();
@@ -150,6 +167,18 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                             ))}
                         </div>
                     )}
+                    {isHR && !isComplete && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openActionModal('convert_leave_type')}
+                                className="text-slate-600 border-slate-300 hover:bg-slate-50"
+                            >
+                                Convert Leave Type
+                            </Button>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -166,16 +195,36 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                 title={`Confirm Action: ${selectedAction.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`}
             >
                 <div className="workflow-action-modal">
-                    <p className="action-description">
+                    <p className="action-description mb-4">
                         You are about to perform "{selectedAction.replace(/_/g, ' ')}" on this leave request.
                     </p>
+
+                    {selectedAction === 'convert_leave_type' && (
+                        <div className="form-group mb-4">
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Convert To</label>
+                            <select
+                                value={conversionType}
+                                onChange={(e) => setConversionType(e.target.value)}
+                                className="w-full text-sm border-slate-300 rounded-md focus:ring-brand-500 focus:border-brand-500"
+                            >
+                                <option value="unpaid">Unpaid Leave</option>
+                                <option value="emergency">Emergency Leave</option>
+                                <option value="annual">Annual Leave</option>
+                                <option value="sick">Sick Leave</option>
+                            </select>
+                        </div>
+                    )}
+
                     <div className="form-group">
-                        <label>Comment (optional)</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                            {selectedAction === 'convert_leave_type' ? 'Reason (Required)' : 'Comment (Optional)'}
+                        </label>
                         <textarea
                             value={actionComment}
                             onChange={e => setActionComment(e.target.value)}
-                            placeholder="Add a comment..."
-                            className="action-comment-input"
+                            placeholder={selectedAction === 'convert_leave_type' ? "State reason for conversion..." : "Add a comment..."}
+                            className="action-comment-input w-full border-slate-300 rounded-md text-sm"
+                            rows={3}
                         />
                     </div>
                     <div className="action-modal-buttons">

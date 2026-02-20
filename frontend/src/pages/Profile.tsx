@@ -182,7 +182,7 @@ const Profile: React.FC = () => {
                                 </div>
                                 <div>
                                     <p className="text-xs text-slate-400">Department</p>
-                                    <p className="font-medium text-slate-700">{user.department}</p>
+                                    <p className="font-medium text-slate-700">{(user as any).department?.name || (user as any).department}</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">

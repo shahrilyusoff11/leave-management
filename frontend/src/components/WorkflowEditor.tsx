@@ -111,7 +111,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
             responsible_role: 'hod',
             action_type: 'approve',
             timeout_days: 7,
-            timeout_action: 'escalate',
+            timeout_action: 'fallback_step',
             requires_document: false,
             is_terminal: false,
             created_at: new Date().toISOString(),

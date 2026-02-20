@@ -736,6 +736,68 @@ func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year s
 	return requests, nil
 }
 
+func (ls *LeaveService) GetTeamCalendar(managerID uuid.UUID, year string, month string) ([]models.LeaveRequest, error) {
+	var requests []models.LeaveRequest
+
+	// Query for Approved or Pending leaves
+	baseQuery := ls.db.Preload("User").
+		Preload("Approver").
+		Where("leave_requests.status IN ?", []models.LeaveStatus{models.StatusApproved, models.StatusPending})
+
+	if year != "" {
+		baseQuery = baseQuery.Where("EXTRACT(YEAR FROM leave_requests.start_date) = ? OR EXTRACT(YEAR FROM leave_requests.end_date) = ?", year, year)
+	}
+	if month != "" {
+		baseQuery = baseQuery.Where("EXTRACT(MONTH FROM leave_requests.start_date) = ? OR EXTRACT(MONTH FROM leave_requests.end_date) = ?", month, month)
+	}
+
+	// Direct reports
+	query := baseQuery.Session(&gorm.Session{}).
+		Joins("JOIN users ON users.id = leave_requests.user_id").
+		Where("users.manager_id = ?", managerID)
+
+	if err := query.Order("leave_requests.start_date ASC").Find(&requests).Error; err != nil {
+		return nil, err
+	}
+
+	// Department-wide if HOD (or acting HOD)
+	if ls.departmentSvc != nil {
+		var departments []models.Department
+		ls.db.Where("hod_id = ?", managerID).Find(&departments)
+
+		actingDeptIDs, _ := ls.departmentSvc.IsUserActingHOD(managerID)
+
+		var deptIDs []uuid.UUID
+		for _, dept := range departments {
+			deptIDs = append(deptIDs, dept.ID)
+		}
+		deptIDs = append(deptIDs, actingDeptIDs...)
+
+		if len(deptIDs) > 0 {
+			var deptRequests []models.LeaveRequest
+			deptQuery := baseQuery.Session(&gorm.Session{}).
+				Joins("JOIN users ON users.id = leave_requests.user_id").
+				Where("users.department_id IN ?", deptIDs).
+				Where("users.id != ?", managerID)
+
+			if err := deptQuery.Order("leave_requests.start_date ASC").Find(&deptRequests).Error; err == nil {
+				seen := make(map[uuid.UUID]bool)
+				for _, r := range requests {
+					seen[r.ID] = true
+				}
+				for _, r := range deptRequests {
+					if !seen[r.ID] {
+						requests = append(requests, r)
+						seen[r.ID] = true
+					}
+				}
+			}
+		}
+	}
+
+	return requests, nil
+}
+
 func (ls *LeaveService) GetUserLeaveBalance(userID uuid.UUID, year string) (map[string]interface{}, error) {
 	var balances []models.LeaveBalance
 

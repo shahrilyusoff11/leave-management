@@ -9,7 +9,7 @@ import { Modal } from '../components/ui/Modal';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { format } from 'date-fns';
 import { useToast } from '../components/ui/Toast';
-import type { BlackoutDate, Department, LeaveType } from '../types';
+import type { BlackoutDate, Department } from '../types';
 
 const BlackoutDateManagement: React.FC = () => {
     const { showToast } = useToast();

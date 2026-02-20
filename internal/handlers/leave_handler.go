@@ -178,6 +178,21 @@ func (h *LeaveHandler) GetTeamLeaveRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, requests)
 }
 
+func (h *LeaveHandler) GetTeamCalendar(c *gin.Context) {
+	managerID := c.MustGet("user_id").(uuid.UUID)
+
+	year := c.Query("year")
+	month := c.Query("month")
+
+	requests, err := h.leaveService.GetTeamCalendar(managerID, year, month)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, requests)
+}
+
 func (h *LeaveHandler) GetLeaveBalance(c *gin.Context) {
 	userID := c.MustGet("user_id").(uuid.UUID)
 	year := c.DefaultQuery("year", strconv.Itoa(time.Now().Year()))

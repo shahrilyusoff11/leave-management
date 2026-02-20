@@ -1,0 +1,2 @@
+﻿src/pages/BlackoutDateManagement.tsx(12,41): error TS6196: 'LeaveType' is declared but never used.
+src/pages/Profile.tsx(185,85): error TS2551: Property 'department' does not exist on type 'User'. Did you mean 'department_id'?

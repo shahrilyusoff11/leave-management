@@ -12,6 +12,7 @@ import AuditLogs from './pages/AuditLogs';
 import Reports from './pages/Reports';
 import HolidayManagement from './pages/HolidayManagement';
 import Profile from './pages/Profile';
+import TeamCalendar from './pages/TeamCalendar';
 import HRLeaves from './pages/HRLeaves';
 import SystemSettings from './pages/SystemSettings';
 import LeaveTypeSettings from './pages/LeaveTypeSettings';
@@ -32,6 +33,7 @@ function App() {
             <Route path="/request-leave" element={<RequestLeave />} />
             <Route path="/my-leaves" element={<MyLeaves />} />
             <Route path="/team-leaves" element={<TeamLeaves />} />
+            <Route path="/team-calendar" element={<TeamCalendar />} />
             <Route path="/hr-leaves" element={<HRLeaves />} />
             <Route path="/users" element={<UserManagement />} />
             <Route path="/audit-logs" element={<AuditLogs />} />
