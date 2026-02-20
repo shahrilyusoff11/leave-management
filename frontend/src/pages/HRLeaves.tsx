@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Filter, GitBranch } from 'lucide-react';
+import { Filter, GitBranch, FileText } from 'lucide-react';
 import api from '../services/api';
 import type { LeaveRequest } from '../types';
 import { Card } from '../components/ui/Card';
@@ -203,8 +203,21 @@ const HRLeaves: React.FC = () => {
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-4 text-slate-600 max-w-xs truncate" title={req.reason}>
-                                                {req.reason}
+                                            <td className="px-6 py-4 text-slate-600 max-w-xs" title={req.reason}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="truncate">{req.reason}</span>
+                                                    {req.attachment_url && (
+                                                        <a
+                                                            href={req.attachment_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-brand-600 hover:text-brand-700 md:inline-flex items-center shrink-0 hidden"
+                                                            title="View Attachment"
+                                                        >
+                                                            <FileText className="h-4 w-4" />
+                                                        </a>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex justify-end gap-2">
