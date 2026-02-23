@@ -55,6 +55,11 @@ func (es *EmailService) SendLeaveRequestNotification(request *models.LeaveReques
 func (es *EmailService) SendApprovalNotification(request *models.LeaveRequest) error {
 	subject := "Your Leave Request has been Approved"
 
+	approverName := "System"
+	if request.Approver != nil {
+		approverName = fmt.Sprintf("%s %s", request.Approver.FirstName, request.Approver.LastName)
+	}
+
 	body := fmt.Sprintf(`
 	Dear %s %s,
 	
@@ -63,7 +68,7 @@ func (es *EmailService) SendApprovalNotification(request *models.LeaveRequest) e
 	Leave Type: %s
 	Dates: %s to %s
 	Duration: %.1f days
-	Approved by: %s %s
+	Approved by: %s
 	Approval Date: %s
 	
 	Regards,
@@ -74,7 +79,7 @@ func (es *EmailService) SendApprovalNotification(request *models.LeaveRequest) e
 		request.StartDate.Format("January 2, 2006"),
 		request.EndDate.Format("January 2, 2006"),
 		request.DurationDays,
-		request.Approver.FirstName, request.Approver.LastName,
+		approverName,
 		request.ApprovedAt.Format("January 2, 2006"))
 
 	return es.sendEmail(request.User.Email, subject, body)
@@ -83,13 +88,18 @@ func (es *EmailService) SendApprovalNotification(request *models.LeaveRequest) e
 func (es *EmailService) SendEscalationNotification(request *models.LeaveRequest) error {
 	subject := "Leave Request Escalated - Action Required"
 
+	managerName := "System / No Manager Assigned"
+	if request.User.Manager != nil {
+		managerName = fmt.Sprintf("%s %s", request.User.Manager.FirstName, request.User.Manager.LastName)
+	}
+
 	body := fmt.Sprintf(`
 	Attention HR Team,
 	
 	A leave request has been escalated due to no response from the manager:
 	
 	Employee: %s %s
-	Manager: %s %s
+	Manager: %s
 	Leave Type: %s
 	Dates: %s to %s
 	Duration: %.1f days
@@ -101,7 +111,7 @@ func (es *EmailService) SendEscalationNotification(request *models.LeaveRequest)
 	Leave Management System
 	`,
 		request.User.FirstName, request.User.LastName,
-		request.User.Manager.FirstName, request.User.Manager.LastName,
+		managerName,
 		strings.Title(string(request.LeaveType)),
 		request.StartDate.Format("January 2, 2006"),
 		request.EndDate.Format("January 2, 2006"),

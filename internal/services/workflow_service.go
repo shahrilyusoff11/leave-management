@@ -299,10 +299,26 @@ func (s *WorkflowService) ProcessActionWithTx(
 	}
 
 	// Update state
-	if isTerminal || (nextStepID == nil && currentStep.IsTerminal) {
+	if isTerminal || nextStepID == nil {
 		state.IsComplete = true
 		now := time.Now()
 		state.CompletedAt = &now
+
+		// If it's the end of the line and no terminal status was explicitly defined, infer from action
+		if !isTerminal {
+			switch action {
+			case models.StepActionApproved, models.StepActionVerified, models.StepActionCategorizedAL, models.StepActionCategorizedUL:
+				terminalStatus = models.StatusApproved
+			case models.StepActionRejected, models.StepActionNotVerified:
+				terminalStatus = models.StatusRejected
+			case models.StepActionEscalated:
+				terminalStatus = models.StatusEscalated
+			// Stay pending for RequestedDocs if we somehow reach here, though nextStepID wouldn't be nil normally
+			default:
+				terminalStatus = models.StatusApproved // Failsafe
+			}
+		}
+
 		state.FinalStatus = terminalStatus
 		state.CurrentStepID = nil
 	} else if nextStepID != nil {
@@ -562,31 +578,15 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 	err := s.db.Where("role = ? AND is_active = ?", state.CurrentStep.ResponsibleRole, true).Find(&users).Error
 
 	// [SMART ROUTING] Filter out Applicant from Role-Based Pool
-	// e.g. If HR Manager applies, and step is "HR", they shouldn't be in the list of approvers for themselves.
-	// However, usually we want ANY OTHER HR.
 	if err == nil {
 		var validUsers []models.User
 		requestsSelf := false
+
+		// [OPTIMIZATION] Fetch the applicant ID ONCE outside the loop to prevent N+1 queries
+		var lr models.LeaveRequest
+		s.db.Select("user_id").First(&lr, "id = ?", state.LeaveRequestID)
+
 		for _, u := range users {
-			// Handle case where state.LeaveRequestID lookup is needed if not available?
-			// We need the applicant ID.
-			// Let's assume we can get it from the state if we loaded it, but we might not have.
-			// Optimization: We loaded leaveRequest above in specific blocks.
-			// Let's do a quick check if we have the applicant ID locally.
-			// Ensure we filter the applicant.
-
-			// We need to know who the applicant is to filter.
-			// Let's just fetch the request ID if we haven't.
-			// Actually, let's just do a query filter for the list if possible, or filter in memory.
-
-			// Simple in-memory filtering:
-			// We need to fetch the leave request to know the UserID if we are in this block
-			// and haven't fetched it yet (e.g. HR role).
-
-			// Cost is low.
-			var lr models.LeaveRequest
-			s.db.Select("user_id").First(&lr, "id = ?", state.LeaveRequestID)
-
 			if u.ID != lr.UserID {
 				validUsers = append(validUsers, u)
 			} else {

@@ -224,6 +224,7 @@ func (h *LeaveHandler) PerformWorkflowAction(c *gin.Context) {
 		"request_docs":      models.StepActionRequestedDocs,
 		"categorize_al":     models.StepActionCategorizedAL,
 		"categorize_unpaid": models.StepActionCategorizedUL,
+		"escalate":          models.StepActionEscalated,
 	}
 
 	action, ok := actionMap[req.Action]
