@@ -194,6 +194,59 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 	return err
 }
 
+// ResubmitAttachment allows the request owner to upload a new document after docs were requested
+func (ls *LeaveService) ResubmitAttachment(requestID, userID uuid.UUID, attachmentURL, attachmentFileName string) error {
+	return ls.db.Transaction(func(tx *gorm.DB) error {
+		var request models.LeaveRequest
+		if err := tx.First(&request, "id = ?", requestID).Error; err != nil {
+			return fmt.Errorf("leave request not found: %w", err)
+		}
+
+		// Only the owner can resubmit
+		if request.UserID != userID {
+			return errors.New("only the request owner can resubmit documents")
+		}
+
+		// Only pending requests
+		if request.Status != models.StatusPending {
+			return errors.New("can only resubmit documents for pending requests")
+		}
+
+		// Update attachment
+		request.AttachmentURL = attachmentURL
+		request.AttachmentFileName = attachmentFileName
+		request.UpdatedAt = time.Now()
+		if err := tx.Save(&request).Error; err != nil {
+			return err
+		}
+
+		// Reset workflow action_taken from requested_docs back to pending
+		var workflowState models.LeaveRequestWorkflowState
+		if err := tx.Where("leave_request_id = ?", requestID).First(&workflowState).Error; err == nil {
+			if workflowState.ActionTaken == models.StepActionRequestedDocs {
+				workflowState.ActionTaken = models.StepActionPending
+				workflowState.StepStartedAt = time.Now()
+				workflowState.UpdatedAt = time.Now()
+				if err := tx.Save(&workflowState).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		// Log chronology
+		chronology := models.Chronology{
+			ID:             uuid.New(),
+			LeaveRequestID: requestID,
+			Action:         "document_resubmitted",
+			ActorID:        userID,
+			Comment:        fmt.Sprintf("Document resubmitted: %s", attachmentFileName),
+			Metadata:       models.JSONMap{"attachment_url": attachmentURL, "file_name": attachmentFileName},
+			CreatedAt:      time.Now(),
+		}
+		return tx.Create(&chronology).Error
+	})
+}
+
 // ProcessWorkflowAction handles a workflow action and ensures balance is deducted upon final approval
 func (ls *LeaveService) ProcessWorkflowAction(requestID, actorID uuid.UUID, action models.WorkflowStepAction, comment string) (*models.LeaveRequestWorkflowState, error) {
 	// 1. Fetch Request & Workflow State (Read-only, outside transaction)

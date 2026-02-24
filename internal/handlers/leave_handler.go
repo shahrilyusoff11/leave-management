@@ -119,6 +119,32 @@ func (h *LeaveHandler) CancelLeaveRequest(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Leave request cancelled"})
 }
 
+// ResubmitAttachment allows staff to upload a new document when HOD has RequestedDocs
+func (h *LeaveHandler) ResubmitAttachment(c *gin.Context) {
+	userID := c.MustGet("user_id").(uuid.UUID)
+	requestID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+		return
+	}
+
+	var req struct {
+		AttachmentURL      string `json:"attachment_url" binding:"required"`
+		AttachmentFileName string `json:"attachment_file_name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.leaveService.ResubmitAttachment(requestID, userID, req.AttachmentURL, req.AttachmentFileName); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Document resubmitted successfully"})
+}
+
 func (h *LeaveHandler) GetTeamLeaveRequests(c *gin.Context) {
 	managerID := c.MustGet("user_id").(uuid.UUID)
 

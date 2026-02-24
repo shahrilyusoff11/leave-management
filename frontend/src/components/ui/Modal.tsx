@@ -53,6 +53,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, classNa
                             "relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden",
                             className
                         )}
+                        style={{ colorScheme: 'light' }}
                     >
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-semibold text-slate-900">{title}</h3>

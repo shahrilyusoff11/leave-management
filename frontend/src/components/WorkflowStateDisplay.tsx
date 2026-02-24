@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { ChevronDown } from 'lucide-react';
 import api from '../services/api';
 import type { LeaveRequestWorkflowState } from '../types';
 import { Badge } from './ui/Badge';
@@ -47,6 +48,8 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
     const [selectedAction, setSelectedAction] = useState<string>('');
     const [actionComment, setActionComment] = useState('');
     const [conversionType, setConversionType] = useState('unpaid');
+    const [uploading, setUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const fetchWorkflowState = useCallback(async () => {
         try {
@@ -94,6 +97,36 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
             showToast(err.response?.data?.error || 'Failed to perform action', 'error');
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploading(true);
+        try {
+            // Step 1: Upload file to server
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadRes = await api.post('/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            // Step 2: Resubmit attachment on the leave request
+            await api.put(`/leave-requests/${requestId}/resubmit-attachment`, {
+                attachment_url: uploadRes.data.url,
+                attachment_file_name: file.name
+            });
+
+            showToast('Document uploaded successfully', 'success');
+            fetchWorkflowState();
+            onActionComplete?.();
+        } catch (err: any) {
+            showToast(err.response?.data?.error || 'Failed to upload document', 'error');
+        } finally {
+            setUploading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
@@ -152,6 +185,43 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                         <span className="step-role">Awaiting: {currentStep.responsible_role}</span>
                     </div>
 
+                    {/* Document Request Alert for Staff */}
+                    {workflowState.action_taken === 'requested_docs' && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <div className="flex items-start gap-2">
+                                <span className="text-amber-600 font-bold text-sm">⚠️ Document Requested</span>
+                            </div>
+                            <p className="text-xs text-amber-700 mt-1">
+                                Your approver has requested additional documents for this leave request.
+                                Please upload the required document below.
+                            </p>
+                            {workflowState.action_comment && (
+                                <p className="text-xs text-amber-800 mt-2 font-medium italic">
+                                    "{workflowState.action_comment}"
+                                </p>
+                            )}
+                            <div className="mt-3">
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".jpg,.jpeg,.png,.pdf,.doc,.docx"
+                                    onChange={handleDocUpload}
+                                    className="hidden"
+                                    id={`doc-upload-${requestId}`}
+                                />
+                                <Button
+                                    size="sm"
+                                    variant="primary"
+                                    isLoading={uploading}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                                >
+                                    {uploading ? 'Uploading...' : '📎 Upload Document'}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     {showActions && currentStatus === 'pending' && (
                         <div className="workflow-actions">
                             {getAvailableActions().map(action => (
@@ -202,16 +272,20 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                     {selectedAction === 'convert_leave_type' && (
                         <div className="form-group mb-4">
                             <label className="block text-sm font-medium text-slate-700 mb-1">Convert To</label>
-                            <select
-                                value={conversionType}
-                                onChange={(e) => setConversionType(e.target.value)}
-                                className="w-full text-sm text-slate-900 bg-white border border-slate-300 rounded-md shadow-sm focus:ring-brand-500 focus:border-brand-500 py-2 px-3"
-                            >
-                                <option value="unpaid" className="text-slate-900">Unpaid Leave</option>
-                                <option value="emergency" className="text-slate-900">Emergency Leave</option>
-                                <option value="annual" className="text-slate-900">Annual Leave</option>
-                                <option value="sick" className="text-slate-900">Sick Leave</option>
-                            </select>
+                            <div className="relative">
+                                <select
+                                    value={conversionType}
+                                    onChange={(e) => setConversionType(e.target.value)}
+                                    className="w-full appearance-none h-10 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all py-2 pl-3 pr-10"
+                                    style={{ color: '#0f172a', backgroundColor: 'white', colorScheme: 'light' }}
+                                >
+                                    <option value="unpaid" style={{ color: '#0f172a', backgroundColor: 'white' }}>Unpaid Leave</option>
+                                    <option value="emergency" style={{ color: '#0f172a', backgroundColor: 'white' }}>Emergency Leave</option>
+                                    <option value="annual" style={{ color: '#0f172a', backgroundColor: 'white' }}>Annual Leave</option>
+                                    <option value="sick" style={{ color: '#0f172a', backgroundColor: 'white' }}>Sick Leave</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-3 h-4 w-4 text-slate-400 pointer-events-none" />
+                            </div>
                         </div>
                     )}
 
@@ -223,7 +297,8 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                             value={actionComment}
                             onChange={e => setActionComment(e.target.value)}
                             placeholder={selectedAction === 'convert_leave_type' ? "State reason for conversion..." : "Add a comment..."}
-                            className="action-comment-input w-full border border-slate-300 rounded-md text-sm text-slate-900 bg-white p-2 shadow-sm focus:ring-brand-500 focus:border-brand-500"
+                            className="action-comment-input w-full border border-slate-300 rounded-lg text-sm text-slate-900 bg-white p-3 shadow-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                            style={{ color: '#0f172a', backgroundColor: 'white', colorScheme: 'light' }}
                             rows={3}
                         />
                     </div>

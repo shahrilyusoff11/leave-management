@@ -170,6 +170,7 @@ func main() {
 		protected.GET("/leave-requests/:id/chronology", leaveHandler.GetLeaveRequestChronology)
 		protected.GET("/leave-requests/:id/workflow-state", leaveHandler.GetWorkflowState)
 		protected.PUT("/leave-requests/:id/cancel", leaveHandler.CancelLeaveRequest)
+		protected.PUT("/leave-requests/:id/resubmit-attachment", leaveHandler.ResubmitAttachment)
 
 		protected.GET("/leave-balance", leaveHandler.GetLeaveBalance)
 		protected.POST("/upload", uploadHandler.UploadFile)

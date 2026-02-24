@@ -199,6 +199,11 @@ const MyLeaves: React.FC = () => {
                                                             Waiting: {req.workflow_state.current_step.responsible_role}
                                                         </span>
                                                     )}
+                                                    {req.status === 'pending' && req.workflow_state?.action_taken === 'requested_docs' && (
+                                                        <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                                            ⚠ Doc Requested
+                                                        </span>
+                                                    )}
                                                     {req.status === 'rejected' && req.rejection_reason && (
                                                         <span className="text-xs text-red-600 italic max-w-[150px] truncate" title={req.rejection_reason}>
                                                             "{req.rejection_reason}"

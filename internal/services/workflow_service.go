@@ -283,9 +283,12 @@ func (s *WorkflowService) ProcessActionWithTx(
 			terminalStatus = models.StatusApproved
 		}
 	case models.StepActionRequestedDocs:
-		// Stay at current step, waiting for document resubmission
-		state.ActionTaken = models.StepActionPending
+		// Stay at current step, waiting for document resubmission.
+		// Set a flag so the terminal check below does NOT close the workflow.
+		state.ActionTaken = models.StepActionRequestedDocs
 		state.StepStartedAt = time.Now()
+		// Explicitly set nextStepID to current step to prevent the nil-termination logic from firing
+		nextStepID = state.CurrentStepID
 	case models.StepActionEscalated:
 		// Move to fallback step if configured
 		if currentStep.FallbackStepID != nil {
@@ -321,11 +324,14 @@ func (s *WorkflowService) ProcessActionWithTx(
 
 		state.FinalStatus = terminalStatus
 		state.CurrentStepID = nil
-	} else if nextStepID != nil {
+	} else {
 		state.PreviousStepID = state.CurrentStepID
 		state.CurrentStepID = nextStepID
 		state.StepStartedAt = time.Now()
-		state.ActionTaken = models.StepActionPending
+		// Only reset to pending if this isn't a "stay at current step" action like RequestedDocs
+		if action != models.StepActionRequestedDocs {
+			state.ActionTaken = models.StepActionPending
+		}
 	}
 
 	state.UpdatedAt = time.Now()
