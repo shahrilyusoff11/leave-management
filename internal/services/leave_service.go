@@ -318,6 +318,9 @@ func (ls *LeaveService) ProcessWorkflowAction(requestID, actorID uuid.UUID, acti
 			case models.StatusRejected:
 				request.RejectedAt = &now
 				request.RejectionReason = comment
+			case models.StatusEscalated:
+				request.IsEscalated = true
+				request.EscalatedAt = &now
 			}
 			request.UpdatedAt = now
 

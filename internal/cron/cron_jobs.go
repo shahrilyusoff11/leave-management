@@ -29,14 +29,11 @@ func NewCronJobs(leaveService *services.LeaveService,
 }
 
 func (cj *CronJobs) Start() error {
-	// Run every day at midnight to check for escalated requests
-	_, err := cj.cron.AddFunc("0 0 0 * * *", cj.checkEscalatedRequests)
-	if err != nil {
-		return fmt.Errorf("failed to add escalated requests job: %w", err)
-	}
+	// Note: checkEscalatedRequests was removed — processWorkflowTimeouts (hourly)
+	// handles all timeout escalation at the per-step level via TimeoutDays config.
 
 	// Run every day at 1 AM to send reminder emails
-	_, err = cj.cron.AddFunc("0 0 1 * * *", cj.sendReminderEmails)
+	_, err := cj.cron.AddFunc("0 0 1 * * *", cj.sendReminderEmails)
 	if err != nil {
 		return fmt.Errorf("failed to add reminder emails job: %w", err)
 	}

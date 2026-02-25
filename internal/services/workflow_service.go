@@ -405,7 +405,27 @@ func (s *WorkflowService) applyTimeoutAction(state *models.LeaveRequestWorkflowS
 			state.StepStartedAt = time.Now()
 			state.ActionTaken = models.StepActionTimeoutApplied
 			state.UpdatedAt = time.Now()
-			return state.LeaveRequestID, s.db.Save(state).Error
+			if err := s.db.Save(state).Error; err != nil {
+				return state.LeaveRequestID, err
+			}
+			// Record chronology entry for the timeout fallback
+			chronology := models.Chronology{
+				ID:             uuid.New(),
+				LeaveRequestID: state.LeaveRequestID,
+				Action:         string(models.StepActionTimeoutApplied),
+				ActorID:        uuid.Nil,
+				Comment:        fmt.Sprintf("Step '%s' timed out after %d days. Escalated to fallback step.", step.StepName, step.TimeoutDays),
+				Metadata: models.JSONMap{
+					"step_name":      step.StepName,
+					"timeout_action": string(step.TimeoutAction),
+					"timeout_days":   step.TimeoutDays,
+				},
+				CreatedAt: time.Now(),
+			}
+			if err := s.db.Create(&chronology).Error; err != nil {
+				return state.LeaveRequestID, err
+			}
+			return state.LeaveRequestID, nil
 		}
 		return uuid.Nil, nil
 
@@ -456,8 +476,8 @@ func (s *WorkflowService) ConvertLeaveType(leaveRequestID uuid.UUID, newType mod
 			return err
 		}
 
-		// Re-initialize workflow for new leave type
-		newWorkflow, err := s.GetWorkflowForLeaveType(newType)
+		// Re-initialize workflow for new leave type (use tx to read within the same transaction)
+		newWorkflow, err := s.getWorkflowForLeaveType(tx, newType)
 		if err != nil {
 			return nil // No workflow for new type, continue without
 		}
@@ -871,6 +891,67 @@ func (s *WorkflowService) EvaluateConditions(step *models.WorkflowStep, request 
 	}
 
 	return true, ""
+}
+
+// FixTerminalStepEndpoints is a one-time migration that removes dummy terminal
+// endpoint steps (e.g., "approved" steps that just sit there waiting for another click).
+// It makes the last real action step terminal instead, eliminating double-approve bugs.
+func (s *WorkflowService) FixTerminalStepEndpoints() error {
+	// Find all dummy terminal steps: steps that are terminal, have no next steps,
+	// and are named generically (approved, rejected, etc.)
+	var dummyTerminals []models.WorkflowStep
+	err := s.db.Where(
+		"is_terminal = ? AND next_step_on_approve IS NULL AND next_step_on_reject IS NULL AND step_name IN ?",
+		true,
+		[]string{"approved", "rejected", "convert_unpaid"},
+	).Find(&dummyTerminals).Error
+	if err != nil || len(dummyTerminals) == 0 {
+		return nil // Nothing to fix
+	}
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, dummy := range dummyTerminals {
+			// Find parent steps that point to this dummy via NextStepOnApprove
+			var parentSteps []models.WorkflowStep
+			tx.Where("next_step_on_approve = ?", dummy.ID).Find(&parentSteps)
+			for _, parent := range parentSteps {
+				parent.IsTerminal = true
+				parent.TerminalStatus = dummy.TerminalStatus
+				parent.NextStepOnApprove = nil
+				if err := tx.Save(&parent).Error; err != nil {
+					return err
+				}
+			}
+
+			// Find parent steps that point to this dummy via NextStepOnReject
+			var rejectParents []models.WorkflowStep
+			tx.Where("next_step_on_reject = ?", dummy.ID).Find(&rejectParents)
+			for _, parent := range rejectParents {
+				// For reject parents, only clear the pointer (rejection is already handled)
+				parent.NextStepOnReject = nil
+				if err := tx.Save(&parent).Error; err != nil {
+					return err
+				}
+			}
+
+			// Also fix any active workflow states stuck at dummy steps
+			tx.Model(&models.LeaveRequestWorkflowState{}).
+				Where("current_step_id = ? AND is_complete = ?", dummy.ID, false).
+				Updates(map[string]interface{}{
+					"is_complete":     true,
+					"final_status":    dummy.TerminalStatus,
+					"current_step_id": nil,
+					"completed_at":    time.Now(),
+					"updated_at":      time.Now(),
+				})
+
+			// Delete the dummy step
+			if err := tx.Delete(&dummy).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // SeedDefaultWorkflows creates default workflow configurations for all leave types

@@ -222,7 +222,7 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                         </div>
                     )}
 
-                    {showActions && currentStatus === 'pending' && (
+                    {showActions && currentStatus === 'pending' && workflowState.action_taken !== 'requested_docs' && (
                         <div className="workflow-actions">
                             {getAvailableActions().map(action => (
                                 <Button

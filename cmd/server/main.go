@@ -76,6 +76,9 @@ func main() {
 	if err := workflowService.SeedDefaultWorkflows(); err != nil {
 		appLogger.Error("Failed to seed default workflows", zap.Error(err))
 	}
+	if err := workflowService.FixTerminalStepEndpoints(); err != nil {
+		appLogger.Error("Failed to fix terminal step endpoints", zap.Error(err))
+	}
 
 	emailService := services.NewEmailService(
 		cfg.Email.Host,
