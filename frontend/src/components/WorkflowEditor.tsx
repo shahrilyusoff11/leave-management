@@ -182,7 +182,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
                             </button>
                         </div>
                         <div className="steps-list">
-                            {workflow.steps?.sort((a, b) => a.step_order - b.step_order).map((step, index) => (
+                            {[...(workflow.steps || [])].sort((a, b) => a.step_order - b.step_order).map((step, index) => (
                                 <React.Fragment key={step.id}>
                                     <div className="step-card">
                                         <div className="step-header">
@@ -365,6 +365,27 @@ const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCance
                         </div>
                     </div>
 
+                    {editedStep.timeout_action === 'fallback_step' && (
+                        <div className="form-group">
+                            <label className="tooltip-container">
+                                Fallback Step
+                                <span className="tooltip-icon">
+                                    <Info />
+                                    <span className="tooltip-text">Which step to move to when this step times out.</span>
+                                </span>
+                            </label>
+                            <select
+                                value={editedStep.fallback_step_id || ''}
+                                onChange={e => handleChange('fallback_step_id', e.target.value || null)}
+                            >
+                                <option value="">None</option>
+                                {allSteps.filter(s => s.id !== step.id).map(s => (
+                                    <option key={s.id} value={s.id}>{s.step_label || s.step_name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     <div className="form-row">
                         <div className="form-group">
                             <label>Next Step on Approve</label>
@@ -377,6 +398,7 @@ const StepEditor: React.FC<StepEditorProps> = ({ step, allSteps, onSave, onCance
                                     <option key={s.id} value={s.id}>{s.step_label || s.step_name}</option>
                                 ))}
                             </select>
+                            {isNew && <span className="text-xs text-slate-400 mt-1">Save this step first, then edit other steps to link to it.</span>}
                         </div>
 
                         <div className="form-group">

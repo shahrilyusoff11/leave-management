@@ -136,11 +136,11 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
         const actionType = workflowState.current_step.action_type;
         switch (actionType) {
             case 'approve':
-                return ['approve', 'reject'];
+                return ['approve', 'reject', 'request_docs'];
             case 'verify':
                 return ['verify', 'not_verify', 'request_docs'];
             case 'review':
-                return ['approve', 'reject', 'escalate'];
+                return ['approve', 'reject', 'escalate', 'request_docs'];
             case 'categorize':
                 return ['categorize_al', 'categorize_unpaid'];
             default:
@@ -223,20 +223,22 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                     )}
 
                     {showActions && currentStatus === 'pending' && workflowState.action_taken !== 'requested_docs' && (
-                        <div className="workflow-actions">
-                            {getAvailableActions().map(action => (
-                                <Button
-                                    key={action}
-                                    size="sm"
-                                    variant={action.includes('reject') || action.includes('not') ? 'danger' : 'primary'}
-                                    onClick={() => openActionModal(action)}
-                                    className="workflow-action-btn"
-                                >
-                                    {action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </Button>
-                            ))}
-                        </div>
-                    )}
+                        user?.role === currentStep.responsible_role || user?.role === 'sysadmin'
+                    ) && (
+                            <div className="workflow-actions">
+                                {getAvailableActions().map(action => (
+                                    <Button
+                                        key={action}
+                                        size="sm"
+                                        variant={action.includes('reject') || action.includes('not') ? 'danger' : 'primary'}
+                                        onClick={() => openActionModal(action)}
+                                        className="workflow-action-btn"
+                                    >
+                                        {action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                    </Button>
+                                ))}
+                            </div>
+                        )}
                     {isHR && !isComplete && (
                         <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
                             <Button
