@@ -60,7 +60,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         if (!isAuthenticated || !token) return;
 
         // Ensure EventSource is created correctly based on the environment path
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+        // Ensure EventSource is created correctly based on the environment path
+        const apiUrl = import.meta.env.VITE_API_URL || '/api/v1';
 
         // Pass the auth token as a URL param or establish a session 
         // Note: EventSource doesn't natively support custom headers like Authorization Bearer.
