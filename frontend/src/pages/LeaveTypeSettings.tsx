@@ -21,6 +21,7 @@ interface LeaveTypeConfig {
     min_advance_days: number;
     is_active: boolean;
     display_order: number;
+    allow_negative_balance: boolean;
 }
 
 interface ServiceTier {
@@ -345,7 +346,7 @@ const LeaveTypeSettings: React.FC = () => {
                                                 })}
                                                 className="rounded border-slate-300"
                                             />
-                                            <span className="text-sm text-slate-700">Prorate First Year</span>
+                                            <span className="text-sm text-slate-700">Prorate</span>
                                         </label>
 
                                         <label className="flex items-center gap-2">
@@ -359,6 +360,19 @@ const LeaveTypeSettings: React.FC = () => {
                                                 className="rounded border-slate-300"
                                             />
                                             <span className="text-sm text-slate-700">Allow Carry Forward</span>
+                                        </label>
+
+                                        <label className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={editForm.allow_negative_balance ?? false}
+                                                onChange={(e) => setEditForm({
+                                                    ...editForm,
+                                                    allow_negative_balance: e.target.checked
+                                                })}
+                                                className="rounded border-slate-300"
+                                            />
+                                            <span className="text-sm text-slate-700">Allow Negative Balance</span>
                                         </label>
 
                                         <label className="flex items-center gap-2">
@@ -423,6 +437,16 @@ const LeaveTypeSettings: React.FC = () => {
                                             <span className="text-slate-500">Prorate:</span>
                                             <span className="ml-2">
                                                 {config.prorate_first_year ? (
+                                                    <Check className="h-4 w-4 text-green-600 inline" />
+                                                ) : (
+                                                    <X className="h-4 w-4 text-slate-400 inline" />
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-500">Negative Bal:</span>
+                                            <span className="ml-2">
+                                                {config.allow_negative_balance ? (
                                                     <Check className="h-4 w-4 text-green-600 inline" />
                                                 ) : (
                                                     <X className="h-4 w-4 text-slate-400 inline" />

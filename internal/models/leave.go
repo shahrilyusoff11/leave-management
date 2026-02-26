@@ -113,6 +113,7 @@ type LeaveTypeConfig struct {
 	MinAdvanceDays        int       `gorm:"default:0" json:"min_advance_days"`
 	IsActive              bool      `gorm:"default:true" json:"is_active"`
 	DisplayOrder          int       `gorm:"default:0" json:"display_order"`
+	AllowNegativeBalance  bool      `gorm:"default:false" json:"allow_negative_balance"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
 }

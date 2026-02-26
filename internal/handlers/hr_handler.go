@@ -266,6 +266,22 @@ func (h *HRHandler) GetLeaveRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, requests)
 }
 
+func (h *HRHandler) GetUserLeaveRequests(c *gin.Context) {
+	userID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	requests, err := h.leaveService.GetLeaveRequestsByUser(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, requests)
+}
+
 func (h *HRHandler) ExportPayrollReport(c *gin.Context) {
 	month := c.Query("month")
 	year := c.Query("year")

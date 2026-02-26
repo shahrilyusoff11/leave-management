@@ -92,11 +92,14 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 
 	// 4. Start Transaction for Writes
 	err = ls.db.Transaction(func(tx *gorm.DB) error {
-		// Check balance for leave types that deduct from balance
-		if request.LeaveType == models.LeaveTypeAnnual ||
-			request.LeaveType == models.LeaveTypeEmergency ||
-			request.LeaveType == models.LeaveTypeSick {
+		// Fetch configure for the leave type
+		config, err := ls.leaveTypeConfigSvc.GetConfig(request.LeaveType)
+		if err != nil {
+			return err
+		}
 
+		// Only check if it's not allowing negative balance
+		if !config.AllowNegativeBalance {
 			balance, err := ls.getLeaveBalance(tx, userID, int(time.Now().Year()), request.LeaveType)
 			if err != nil {
 				return err
@@ -379,34 +382,32 @@ func (ls *LeaveService) ProcessWorkflowAction(requestID, actorID uuid.UUID, acti
 
 // Helper to deduct balance (extracted for clarity)
 func (ls *LeaveService) deductLeaveBalance(tx *gorm.DB, request *models.LeaveRequest) error {
-	if request.LeaveType == models.LeaveTypeAnnual ||
-		request.LeaveType == models.LeaveTypeEmergency ||
-		request.LeaveType == models.LeaveTypeSick {
-
-		// Recalculate duration if it's 0
-		durationToDeduct := request.DurationDays
-		if durationToDeduct <= 0 {
-			durationToDeduct = 1
-		}
-
-		var balance models.LeaveBalance
-		err := tx.Where("user_id = ? AND year = ? AND leave_type = ?",
-			request.UserID, request.StartDate.Year(), request.LeaveType).
-			First(&balance).Error
-
-		if err != nil {
-			// If balance not found, that's an issue since we checked it at creation
-			// But maybe we should just create/ignore?
-			// Strict consistency: should exist.
-			return fmt.Errorf("failed to update balance: %w", err)
-		}
-
-		balance.Used += durationToDeduct
-		balance.UpdatedAt = time.Now()
-
-		return tx.Save(&balance).Error
+	// Recalculate duration if it's 0
+	durationToDeduct := request.DurationDays
+	if durationToDeduct <= 0 {
+		durationToDeduct = 1
 	}
-	return nil
+
+	// Always get or create balance to ensure tracking works even for negative balances
+	balance, err := ls.getLeaveBalance(tx, request.UserID, request.StartDate.Year(), request.LeaveType)
+	if err != nil {
+		return fmt.Errorf("failed to update balance: %w", err)
+	}
+
+	balance.Used += durationToDeduct
+	balance.UpdatedAt = time.Now()
+
+	return tx.Save(balance).Error
+}
+
+// GetLeaveRequestsByUser fetches all leave requests for a single user
+func (ls *LeaveService) GetLeaveRequestsByUser(userID uuid.UUID) ([]models.LeaveRequest, error) {
+	var requests []models.LeaveRequest
+	err := ls.db.Preload("User").
+		Where("user_id = ?", userID).
+		Order("created_at desc").
+		Find(&requests).Error
+	return requests, err
 }
 
 func (ls *LeaveService) GetLeaveBalance(userID uuid.UUID, year int, leaveType models.LeaveType) (*models.LeaveBalance, error) {

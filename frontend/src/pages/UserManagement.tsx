@@ -330,7 +330,7 @@ const CreateUserModal = ({ isOpen, onClose, onSuccess, currentUserRole }: { isOp
 
 const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { user: User, isOpen: boolean, onClose: () => void, onSuccess: () => void, currentUserRole?: UserRole }) => {
     const { showToast } = useToast();
-    const [activeTab, setActiveTab] = useState<'details' | 'probation' | 'balance'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'probation' | 'balance' | 'history'>('details');
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [isActive, setIsActive] = useState(user.is_active !== false);
@@ -339,6 +339,9 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
     const [fullUser, setFullUser] = useState<User>(user);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [departments, setDepartments] = useState<Department[]>([]);
+
+    const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
 
     const fetchUserAndManagers = async () => {
         setLoadingDetails(true);
@@ -387,6 +390,25 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
             fetchUserAndManagers();
         }
     }, [isOpen, user.id]);
+
+    useEffect(() => {
+        if (isOpen && activeTab === 'history') {
+            const fetchHistory = async () => {
+                setLoadingHistory(true);
+                try {
+                    const response = await api.get(`/hr/users/${user.id}/leaves`);
+                    if (Array.isArray(response.data)) {
+                        setLeaveHistory(response.data);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch leave history", err);
+                } finally {
+                    setLoadingHistory(false);
+                }
+            };
+            fetchHistory();
+        }
+    }, [isOpen, activeTab, user.id]);
 
     const detailsForm = useForm({
         defaultValues: {
@@ -494,6 +516,12 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
                         onClick={() => setActiveTab('balance')}
                     >
                         Leave Balance
+                    </button>
+                    <button
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-brand-500 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => setActiveTab('history')}
+                    >
+                        Leave History
                     </button>
                 </div>
 
@@ -726,6 +754,62 @@ const EditUserModal = ({ user, isOpen, onClose, onSuccess, currentUserRole }: { 
 
                             <Button type="submit" isLoading={balanceForm.formState.isSubmitting}>Update Balance</Button>
                         </form>
+                    </div>
+                )}
+
+                {activeTab === 'history' && (
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-medium text-slate-900">Leave History</h3>
+                            <button onClick={() => {
+                                // Re-trigger fetch
+                                setLoadingHistory(true);
+                                api.get(`/hr/users/${user.id}/leaves`).then(res => {
+                                    if (Array.isArray(res.data)) setLeaveHistory(res.data);
+                                }).finally(() => setLoadingHistory(false));
+                            }} className="text-sm text-brand-600 hover:text-brand-700 font-medium">
+                                Refresh
+                            </button>
+                        </div>
+
+                        {loadingHistory ? (
+                            <div className="text-center py-8 text-slate-500">Loading history...</div>
+                        ) : leaveHistory.length === 0 ? (
+                            <div className="text-center py-8 text-slate-500 border border-slate-200 rounded-lg">No leave history found for this user.</div>
+                        ) : (
+                            <div className="border border-slate-200 rounded-lg overflow-hidden max-h-[400px] overflow-y-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-50 text-slate-600 font-medium sticky top-0">
+                                        <tr>
+                                            <th className="px-4 py-3">Type</th>
+                                            <th className="px-4 py-3">Duration</th>
+                                            <th className="px-4 py-3">Dates</th>
+                                            <th className="px-4 py-3">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {leaveHistory.map((req) => (
+                                            <tr key={req.id} className="hover:bg-slate-50">
+                                                <td className="px-4 py-3 capitalize">{req.leave_type}</td>
+                                                <td className="px-4 py-3 font-medium">{req.duration_days} Day(s)</td>
+                                                <td className="px-4 py-3 text-slate-600">
+                                                    {new Date(req.start_date).toLocaleDateString()} - {new Date(req.end_date).toLocaleDateString()}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium 
+                                                        ${req.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                                            req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                                                req.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                                                                    'bg-slate-100 text-slate-700'}`}>
+                                                        {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

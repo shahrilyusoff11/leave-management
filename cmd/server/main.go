@@ -217,6 +217,7 @@ func main() {
 			hr.PUT("/users/:id/status", hrHandler.ToggleUserActive)
 			hr.PUT("/users/:id/probation", hrHandler.ConfirmProbation)
 			hr.PUT("/users/:id/leave-balance", hrHandler.UpdateLeaveBalance)
+			hr.GET("/users/:id/leaves", hrHandler.GetUserLeaveRequests)
 			hr.GET("/leave-requests", hrHandler.GetLeaveRequests)
 			hr.GET("/payroll-report", hrHandler.ExportPayrollReport)
 			// Department routes
