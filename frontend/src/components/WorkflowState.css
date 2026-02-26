@@ -1,10 +1,17 @@
 /* Workflow State Display Styles */
 .workflow-state-container {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-    border: 1px solid rgba(99, 102, 241, 0.2);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-top: 8px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.08));
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    transition: all 0.2s ease-in-out;
+}
+
+.workflow-state-container:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+    border-color: rgba(99, 102, 241, 0.3);
 }
 
 .workflow-state-header {
@@ -54,28 +61,25 @@
 }
 
 .workflow-action-btn {
-    font-size: 0.75rem !important;
-    padding: 4px 12px !important;
+    font-size: 0.8rem !important;
+    padding: 6px 14px !important;
     height: auto !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    border-radius: 6px !important;
+}
+
+.workflow-action-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
 }
 
 .workflow-last-action {
     display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid rgba(99, 102, 241, 0.15);
-    font-size: 0.8rem;
-}
-
-.action-label {
-    color: #64748b;
-}
-
-.action-value {
-    color: #1e293b;
-    font-weight: 500;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .workflow-state-loading {
@@ -100,17 +104,20 @@
 .action-comment-input {
     width: 100%;
     min-height: 80px;
-    padding: 10px 12px;
+    padding: 12px 14px;
     border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
     resize: vertical;
+    transition: all 0.2s ease;
+    background-color: #f8fafc !important;
 }
 
 .action-comment-input:focus {
     outline: none;
     border-color: #6366f1;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    background-color: #ffffff !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
 .action-modal-buttons {

@@ -215,6 +215,7 @@ const TeamLeaves: React.FC = () => {
                                                 <td colSpan={7} className="px-4 py-3">
                                                     <WorkflowStateDisplay
                                                         requestId={req.id}
+                                                        applicantId={req.user_id}
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
                                                         showActions={req.status === 'pending' && !!req.can_action}

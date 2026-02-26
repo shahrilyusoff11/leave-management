@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, CheckCircle, XCircle, FileQuestion, ArrowUpRight, History, AlertTriangle, RefreshCw } from 'lucide-react';
+import { cn } from '../utils/cn';
 import api from '../services/api';
 import type { LeaveRequestWorkflowState } from '../types';
 import { Badge } from './ui/Badge';
@@ -11,6 +12,7 @@ import './WorkflowState.css';
 
 interface WorkflowStateDisplayProps {
     requestId: string;
+    applicantId?: string;
     currentStatus: string;
     onActionComplete?: () => void;
     showActions?: boolean;
@@ -33,6 +35,7 @@ const actionLabels: Record<string, string> = {
 
 const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
     requestId,
+    applicantId,
     currentStatus,
     onActionComplete,
     showActions = true
@@ -182,11 +185,17 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                 <div className="workflow-current-step">
                     <div className="step-info">
                         <span className="step-label">{currentStep.step_label || currentStep.step_name}</span>
-                        <span className="step-role">Awaiting: {currentStep.responsible_role}</span>
+                        <div className="flex items-center gap-2">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                            </span>
+                            <span className="step-role text-amber-600 font-medium">Awaiting: {currentStep.responsible_role}</span>
+                        </div>
                     </div>
 
-                    {/* Document Request Alert for Staff */}
-                    {workflowState.action_taken === 'requested_docs' && (
+                    {/* Document Request Alert for Applicant Only */}
+                    {workflowState.action_taken === 'requested_docs' && user?.id === applicantId && (
                         <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                             <div className="flex items-start gap-2">
                                 <span className="text-amber-600 font-bold text-sm">⚠️ Document Requested</span>
@@ -225,18 +234,42 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                     {showActions && currentStatus === 'pending' && workflowState.action_taken !== 'requested_docs' && (
                         user?.role === currentStep.responsible_role || user?.role === 'sysadmin'
                     ) && (
-                            <div className="workflow-actions">
-                                {getAvailableActions().map(action => (
-                                    <Button
-                                        key={action}
-                                        size="sm"
-                                        variant={action.includes('reject') || action.includes('not') ? 'danger' : 'primary'}
-                                        onClick={() => openActionModal(action)}
-                                        className="workflow-action-btn"
-                                    >
-                                        {action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                    </Button>
-                                ))}
+                            <div className="workflow-actions mt-3">
+                                {getAvailableActions().map(action => {
+                                    const isReject = action.includes('reject') || action.includes('not');
+                                    const isRequestDocs = action === 'request_docs';
+                                    const isEscalate = action === 'escalate';
+
+                                    let Icon = CheckCircle;
+                                    let btnVariant = 'primary' as 'primary' | 'danger' | 'warning' | 'outline' | 'ghost';
+                                    let btnClass = 'workflow-action-btn shadow-sm';
+
+                                    if (isReject) {
+                                        Icon = XCircle;
+                                        btnVariant = 'danger';
+                                    } else if (isRequestDocs) {
+                                        Icon = FileQuestion;
+                                        btnClass += ' bg-amber-500 hover:bg-amber-600 text-white border-none';
+                                        btnVariant = 'primary'; // Base variant, overridden by classes
+                                    } else if (isEscalate) {
+                                        Icon = ArrowUpRight;
+                                        btnClass += ' bg-purple-600 hover:bg-purple-700 text-white border-none';
+                                        btnVariant = 'primary';
+                                    }
+
+                                    return (
+                                        <Button
+                                            key={action}
+                                            size="sm"
+                                            variant={btnVariant as any}
+                                            onClick={() => openActionModal(action)}
+                                            className={btnClass}
+                                        >
+                                            <Icon className="w-4 h-4 mr-1.5" />
+                                            {action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                        </Button>
+                                    );
+                                })}
                             </div>
                         )}
                     {isHR && !isComplete && (
@@ -245,8 +278,9 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openActionModal('convert_leave_type')}
-                                className="text-slate-600 border-slate-300 hover:bg-slate-50"
+                                className="text-slate-600 border-slate-300 hover:bg-slate-50 shadow-sm"
                             >
+                                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                                 Convert Leave Type
                             </Button>
                         </div>
@@ -255,9 +289,17 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
             )}
 
             {workflowState.action_taken && workflowState.action_taken !== 'pending' && (
-                <div className="workflow-last-action">
-                    <span className="action-label">Last Action:</span>
-                    <span className="action-value">{actionLabels[workflowState.action_taken] || workflowState.action_taken}</span>
+                <div className="workflow-last-action bg-slate-50 border border-slate-100 rounded-lg p-3 mt-4">
+                    <div className="flex items-center gap-2 mb-1">
+                        <History className="w-4 h-4 text-slate-400" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Last Action</span>
+                    </div>
+                    <div className="flex items-center gap-2 ml-6">
+                        <div className="h-2 w-2 rounded-full bg-brand-500"></div>
+                        <span className="action-value text-sm font-medium text-slate-800">
+                            {actionLabels[workflowState.action_taken] || workflowState.action_taken}
+                        </span>
+                    </div>
                 </div>
             )}
 
@@ -304,7 +346,7 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                             rows={3}
                         />
                     </div>
-                    <div className="action-modal-buttons">
+                    <div className="action-modal-buttons mt-6">
                         <Button variant="ghost" onClick={() => setActionModalOpen(false)}>
                             Cancel
                         </Button>
@@ -312,8 +354,16 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                             onClick={handleAction}
                             isLoading={actionLoading}
                             variant={selectedAction.includes('reject') || selectedAction.includes('not') ? 'danger' : 'primary'}
+                            className={cn(
+                                'shadow-sm',
+                                selectedAction.includes('reject') && 'bg-red-600 hover:bg-red-700',
+                                selectedAction === 'convert_leave_type' && 'bg-slate-800 hover:bg-slate-900',
+                                selectedAction === 'escalate' && 'bg-purple-600 hover:bg-purple-700',
+                                selectedAction === 'request_docs' && 'bg-amber-600 hover:bg-amber-700'
+                            )}
                         >
-                            Confirm
+                            {selectedAction.includes('reject') && <AlertTriangle className="w-4 h-4 mr-1.5" />}
+                            Confirm Action
                         </Button>
                     </div>
                 </div>
