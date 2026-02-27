@@ -219,6 +219,7 @@ const TeamLeaves: React.FC = () => {
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
                                                         showActions={req.status === 'pending' && !!req.can_action}
+                                                        isNegativeBalance={req.is_negative_balance}
                                                     />
                                                 </td>
                                             </tr>

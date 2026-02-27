@@ -16,6 +16,7 @@ interface WorkflowStateDisplayProps {
     currentStatus: string;
     onActionComplete?: () => void;
     showActions?: boolean;
+    isNegativeBalance?: boolean;
 }
 
 const actionLabels: Record<string, string> = {
@@ -38,7 +39,8 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
     applicantId,
     currentStatus,
     onActionComplete,
-    showActions = true
+    showActions = true,
+    isNegativeBalance = false
 }) => {
     const { user } = useAuth();
     const isHR = user?.role === 'hr' || user?.role === 'admin' || user?.role === 'sysadmin';
@@ -180,6 +182,18 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                     <Badge variant="warning">In Progress</Badge>
                 )}
             </div>
+
+            {isNegativeBalance && (
+                <div className="mb-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                    <div>
+                        <h4 className="text-sm font-bold text-red-800">Negative Balance Application</h4>
+                        <p className="text-xs text-red-700 mt-1 leading-snug">
+                            This leave request exceeds the employee's available leave balance. It has been flagged for mandatory HR review regardless of standard approval workflow.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {currentStep && !isComplete && (
                 <div className="workflow-current-step">

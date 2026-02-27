@@ -254,7 +254,8 @@ const MyLeaves: React.FC = () => {
                                                         applicantId={req.user_id}
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
-                                                        showActions={false}
+                                                        showActions={true} // Employee can upload docs if requested
+                                                        isNegativeBalance={req.is_negative_balance}
                                                     />
                                                 </td>
                                             </tr>

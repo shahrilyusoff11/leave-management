@@ -235,7 +235,8 @@ const Dashboard: React.FC = () => {
                                                             applicantId={req.user_id}
                                                             currentStatus={req.status}
                                                             onActionComplete={fetchData}
-                                                            showActions={false}
+                                                            showActions={req.status === 'pending'} // Dashboard usually shows actionables
+                                                            isNegativeBalance={req.is_negative_balance}
                                                         />
                                                     </td>
                                                 </tr>

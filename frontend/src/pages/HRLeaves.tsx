@@ -242,6 +242,7 @@ const HRLeaves: React.FC = () => {
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
                                                         showActions={req.status === 'pending' && canActionRequest(req)}
+                                                        isNegativeBalance={req.is_negative_balance}
                                                     />
                                                 </td>
                                             </tr>
