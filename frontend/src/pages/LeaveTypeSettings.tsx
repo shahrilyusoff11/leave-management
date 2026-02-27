@@ -12,8 +12,8 @@ interface LeaveTypeConfig {
     id: string;
     leave_type: string;
     base_entitlement: number;
-    years_of_service_tiers: Record<string, number> | null;
-    prorate_first_year: boolean;
+    years_of_service_tiers?: Record<string, number>;
+    prorate_type: 'none' | 'first_year' | 'continuous';
     allow_carry_forward: boolean;
     max_carry_forward_days: number;
     max_days_per_application: number | null;
@@ -85,12 +85,13 @@ const LeaveTypeSettings: React.FC = () => {
         setEditingId(config.id);
         setEditForm({
             base_entitlement: config.base_entitlement,
-            prorate_first_year: config.prorate_first_year,
+            prorate_type: config.prorate_type, // Use prorate_type
             allow_carry_forward: config.allow_carry_forward,
             max_carry_forward_days: config.max_carry_forward_days,
             requires_attachment: config.requires_attachment,
             min_advance_days: config.min_advance_days,
             is_active: config.is_active,
+            allow_negative_balance: config.allow_negative_balance,
         });
 
         // Convert tiers object to array for editing
@@ -336,18 +337,26 @@ const LeaveTypeSettings: React.FC = () => {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={editForm.prorate_first_year ?? false}
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-slate-700">Prorate Options</label>
+                                            <select
+                                                value={editForm.prorate_type || 'none'}
                                                 onChange={(e) => setEditForm({
                                                     ...editForm,
-                                                    prorate_first_year: e.target.checked
+                                                    prorate_type: e.target.value as 'none' | 'first_year' | 'continuous'
                                                 })}
-                                                className="rounded border-slate-300"
-                                            />
-                                            <span className="text-sm text-slate-700">Prorate</span>
-                                        </label>
+                                                className="w-full text-sm border-slate-300 rounded-md shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                                            >
+                                                <option value="none">None (Full Entitlement)</option>
+                                                <option value="first_year">Prorate First Year Only</option>
+                                                <option value="continuous">Continuous Prorate (Earned Leave)</option>
+                                            </select>
+                                            <p className="text-xs text-slate-500">
+                                                {editForm.prorate_type === 'continuous' && "Leaves are earned incrementally each month."}
+                                                {editForm.prorate_type === 'first_year' && "Earned incrementally in the first year, full thereafter."}
+                                                {editForm.prorate_type === 'none' && "Employees receive the full entitlement immediately."}
+                                            </p>
+                                        </div>
 
                                         <label className="flex items-center gap-2">
                                             <input
@@ -435,12 +444,9 @@ const LeaveTypeSettings: React.FC = () => {
                                         </div>
                                         <div>
                                             <span className="text-slate-500">Prorate:</span>
-                                            <span className="ml-2">
-                                                {config.prorate_first_year ? (
-                                                    <Check className="h-4 w-4 text-green-600 inline" />
-                                                ) : (
-                                                    <X className="h-4 w-4 text-slate-400 inline" />
-                                                )}
+                                            <span className="ml-2 font-medium">
+                                                {config.prorate_type === 'continuous' ? 'Continuous (Earned)' :
+                                                    config.prorate_type === 'first_year' ? 'First Year Only' : 'None'}
                                             </span>
                                         </div>
                                         <div>

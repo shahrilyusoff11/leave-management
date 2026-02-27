@@ -53,14 +53,35 @@ func (lc *LeaveCalculator) CalculateAnnualLeaveEntitlement(joinedDate time.Time,
 	// Calculate base entitlement with years of service tiers
 	entitlement := lc.calculateEntitlementWithTiers(config, yearsOfService)
 
-	// Prorated calculation for first year
-	if yearsOfService == 0 && config.ProrateFirstYear {
-		monthsWorked := int(time.Since(joinedDate).Hours()/24/30) + 1
+	// Continuous Prorated calculation (Earned Leave)
+	if config.ProrateType == "continuous" || (config.ProrateType == "first_year" && yearsOfService == 0) {
+		// Determine the calculation month
+		// If calculating for the current year: up to current month
+		// If calculating for a past/future year: assumed full 12 months (unless joined late that year)
+		var monthsWorked int
+		now := time.Now()
+
+		if currentYear == now.Year() {
+			if joinedDate.Year() == currentYear {
+				monthsWorked = int(now.Month()) - int(joinedDate.Month()) + 1
+			} else {
+				monthsWorked = int(now.Month())
+			}
+		} else {
+			if joinedDate.Year() == currentYear {
+				monthsWorked = 12 - int(joinedDate.Month()) + 1
+			} else {
+				monthsWorked = 12
+			}
+		}
+
 		if monthsWorked > 12 {
 			monthsWorked = 12
+		} else if monthsWorked <= 0 {
+			monthsWorked = 1 // At least 1 month if they joined this month
 		}
-		proratedDays := (entitlement / 12) * float64(monthsWorked)
-		return proratedDays
+
+		return (entitlement / 12) * float64(monthsWorked)
 	}
 
 	return entitlement
@@ -121,12 +142,31 @@ func (lc *LeaveCalculator) CalculateLeaveEntitlement(leaveType models.LeaveType,
 	// Calculate base entitlement with years of service tiers
 	entitlement := lc.calculateEntitlementWithTiers(config, yearsOfService)
 
-	// Prorated calculation for first year if applicable
-	if yearsOfService == 0 && config.ProrateFirstYear {
-		monthsWorked := int(time.Since(joinedDate).Hours()/24/30) + 1
+	// Continuous Prorated calculation (Earned Leave)
+	if config.ProrateType == "continuous" || (config.ProrateType == "first_year" && yearsOfService == 0) {
+		var monthsWorked int
+		now := time.Now()
+
+		if currentYear == now.Year() {
+			if joinedDate.Year() == currentYear {
+				monthsWorked = int(now.Month()) - int(joinedDate.Month()) + 1
+			} else {
+				monthsWorked = int(now.Month())
+			}
+		} else {
+			if joinedDate.Year() == currentYear {
+				monthsWorked = 12 - int(joinedDate.Month()) + 1
+			} else {
+				monthsWorked = 12
+			}
+		}
+
 		if monthsWorked > 12 {
 			monthsWorked = 12
+		} else if monthsWorked <= 0 {
+			monthsWorked = 1 // At least 1 month if they joined this month
 		}
+
 		return (entitlement / 12) * float64(monthsWorked)
 	}
 

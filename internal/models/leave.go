@@ -53,7 +53,8 @@ type LeaveRequest struct {
 	AttachmentFileName     string       `json:"attachment_file_name"`
 	IsEscalated            bool         `gorm:"default:false" json:"is_escalated"`
 	EscalatedAt            *time.Time   `json:"escalated_at"`
-	UnrecordedLeaveSubtype string       `json:"unrecorded_leave_subtype"` // For marriage, compassionate, hajj
+	IsNegativeBalance      bool         `gorm:"default:false" json:"is_negative_balance"` // Flagged if the request uses a negative balance
+	UnrecordedLeaveSubtype string       `json:"unrecorded_leave_subtype"`                 // For marriage, compassionate, hajj
 	ChronologyEntries      []Chronology `gorm:"foreignKey:LeaveRequestID" json:"chronology_entries,omitempty"`
 	// Workflow fields
 	WorkflowStateID *uuid.UUID                 `json:"workflow_state_id"`
@@ -104,8 +105,8 @@ type LeaveTypeConfig struct {
 	ID                    uuid.UUID `gorm:"type:uuid;primary_key" json:"id"`
 	LeaveType             LeaveType `gorm:"type:varchar(20);unique;not null" json:"leave_type"`
 	BaseEntitlement       float64   `gorm:"not null;default:0" json:"base_entitlement"`
-	YearsOfServiceTiers   JSONMap   `gorm:"type:jsonb" json:"years_of_service_tiers"` // {"2": 2, "5": 4, "10": 6}
-	ProrateFirstYear      bool      `gorm:"default:true" json:"prorate_first_year"`
+	YearsOfServiceTiers   JSONMap   `gorm:"type:jsonb" json:"years_of_service_tiers"`            // {"2": 2, "5": 4, "10": 6}
+	ProrateType           string    `gorm:"type:varchar(20);default:'none'" json:"prorate_type"` // none, first_year, continuous
 	AllowCarryForward     bool      `gorm:"default:false" json:"allow_carry_forward"`
 	MaxCarryForwardDays   int       `gorm:"default:0" json:"max_carry_forward_days"`
 	MaxDaysPerApplication *int      `json:"max_days_per_application"`

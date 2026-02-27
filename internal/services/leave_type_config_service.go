@@ -48,9 +48,9 @@ func (s *LeaveTypeConfigService) UpdateConfig(leaveType models.LeaveType, update
 			config.BaseEntitlement = f
 		}
 	}
-	if v, ok := updates["prorate_first_year"]; ok {
-		if b, ok := v.(bool); ok {
-			config.ProrateFirstYear = b
+	if v, ok := updates["prorate_type"]; ok {
+		if s, ok := v.(string); ok {
+			config.ProrateType = s
 		}
 	}
 	if v, ok := updates["allow_carry_forward"]; ok {
@@ -117,7 +117,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			LeaveType:           models.LeaveTypeAnnual,
 			BaseEntitlement:     12,
 			YearsOfServiceTiers: models.JSONMap{"2": 4, "5": 8},
-			ProrateFirstYear:    true,
+			ProrateType:         "continuous",
 			AllowCarryForward:   true,
 			MaxCarryForwardDays: 5,
 			IsActive:            true,
@@ -130,7 +130,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			LeaveType:           models.LeaveTypeSick,
 			BaseEntitlement:     14,
 			YearsOfServiceTiers: models.JSONMap{"2": 4, "5": 8},
-			ProrateFirstYear:    false,
+			ProrateType:         "none",
 			AllowCarryForward:   false,
 			RequiresAttachment:  true,
 			IsActive:            true,
@@ -142,7 +142,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			ID:                 uuid.New(),
 			LeaveType:          models.LeaveTypeMaternity,
 			BaseEntitlement:    98,
-			ProrateFirstYear:   false,
+			ProrateType:        "none",
 			AllowCarryForward:  false,
 			RequiresAttachment: true,
 			IsActive:           true,
@@ -154,7 +154,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			ID:                uuid.New(),
 			LeaveType:         models.LeaveTypePaternity,
 			BaseEntitlement:   7,
-			ProrateFirstYear:  false,
+			ProrateType:       "none",
 			AllowCarryForward: false,
 			IsActive:          true,
 			DisplayOrder:      4,
@@ -165,7 +165,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			ID:                uuid.New(),
 			LeaveType:         models.LeaveTypeEmergency,
 			BaseEntitlement:   3,
-			ProrateFirstYear:  false,
+			ProrateType:       "none",
 			AllowCarryForward: false,
 			IsActive:          true,
 			DisplayOrder:      5,
@@ -176,7 +176,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			ID:                uuid.New(),
 			LeaveType:         models.LeaveTypeUnpaid,
 			BaseEntitlement:   0,
-			ProrateFirstYear:  false,
+			ProrateType:       "none",
 			AllowCarryForward: false,
 			IsActive:          true,
 			DisplayOrder:      6,
@@ -187,7 +187,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			ID:                uuid.New(),
 			LeaveType:         models.LeaveTypeUnrecorded,
 			BaseEntitlement:   0,
-			ProrateFirstYear:  false,
+			ProrateType:       "none",
 			AllowCarryForward: false,
 			IsActive:          true,
 			DisplayOrder:      7,
@@ -198,7 +198,7 @@ func (s *LeaveTypeConfigService) SeedDefaultConfigs() error {
 			ID:                 uuid.New(),
 			LeaveType:          models.LeaveTypeHospitalization,
 			BaseEntitlement:    60,
-			ProrateFirstYear:   false,
+			ProrateType:        "none",
 			AllowCarryForward:  false,
 			RequiresAttachment: true,
 			IsActive:           true,

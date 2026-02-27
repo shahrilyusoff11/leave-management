@@ -98,16 +98,22 @@ func (ls *LeaveService) CreateLeaveRequest(userID uuid.UUID, request *models.Lea
 			return err
 		}
 
-		// Only check if it's not allowing negative balance
+		// Fetch available balance for calculation
+		balance, err := ls.getLeaveBalance(tx, userID, int(time.Now().Year()), request.LeaveType)
+		if err != nil {
+			return err
+		}
+
+		available := balance.TotalEntitlement + balance.CarriedForward +
+			balance.Adjusted - balance.Used
+
+		// If balance dips below zero, flag it
+		if available < request.DurationDays {
+			request.IsNegativeBalance = true
+		}
+
+		// Only check hard block if it's not allowing negative balance
 		if !config.AllowNegativeBalance {
-			balance, err := ls.getLeaveBalance(tx, userID, int(time.Now().Year()), request.LeaveType)
-			if err != nil {
-				return err
-			}
-
-			available := balance.TotalEntitlement + balance.CarriedForward +
-				balance.Adjusted - balance.Used
-
 			if available < request.DurationDays {
 				return fmt.Errorf("insufficient balance. Available: %.1f, Requested: %.1f",
 					available, request.DurationDays)
@@ -447,6 +453,23 @@ func (ls *LeaveService) getLeaveBalance(db *gorm.DB, userID uuid.UUID, year int,
 		}
 	} else if err != nil {
 		return nil, err
+	} else {
+		// Existing balance found: Check if we need to sync/update continuous earned leave
+		// Only sync if the HR has NOT manually overridden the balance
+		if !balance.IsOverridden {
+			var user models.User
+			if err := db.First(&user, "id = ?", userID).Error; err == nil {
+				currentCalcEntitlement := ls.calculateDefaultEntitlement(&user, year, leaveType)
+
+				// Sync if there's a difference (using a small epsilon for float comparison)
+				if currentCalcEntitlement != balance.TotalEntitlement && (currentCalcEntitlement-balance.TotalEntitlement > 0.01 || balance.TotalEntitlement-currentCalcEntitlement > 0.01) {
+					balance.TotalEntitlement = currentCalcEntitlement
+					balance.UpdatedAt = time.Now()
+					// Save the updated entitlement silently
+					db.Save(&balance)
+				}
+			}
+		}
 	}
 
 	return &balance, nil

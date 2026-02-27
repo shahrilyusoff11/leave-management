@@ -257,29 +257,63 @@ func (s *WorkflowService) ProcessActionWithTx(
 		return nil, err
 	}
 
+	// Fetch full request to check IsNegativeBalance
+	var leaveRequest models.LeaveRequest
+	tx.First(&leaveRequest, "id = ?", leaveRequestID)
+
 	// Determine next step based on action
 	var nextStepID *uuid.UUID
 	var isTerminal bool
 	var terminalStatus models.LeaveStatus
 
+	// Helper function to resolve dynamic skips
+	resolveNextStep := func(initialNextStepID *uuid.UUID) *uuid.UUID {
+		currentCheckID := initialNextStepID
+		for currentCheckID != nil {
+			var nextStep models.WorkflowStep
+			if err := tx.First(&nextStep, "id = ?", currentCheckID).Error; err != nil {
+				break
+			}
+
+			// If this step requires HR ONLY IF negative, and request is NOT negative, skip it
+			if requiresHR, ok := nextStep.Conditions["requires_hr_if_negative"].(bool); ok && requiresHR {
+				if !leaveRequest.IsNegativeBalance {
+					// We need to skip this step. What's its next step?
+					// Assume it acts as an auto-approve bypass
+					if nextStep.IsTerminal {
+						isTerminal = true
+						terminalStatus = nextStep.TerminalStatus
+						return nil // End of workflow
+					}
+					currentCheckID = nextStep.NextStepOnApprove
+					continue
+				}
+			}
+			break // Step is valid, no bypass needed
+		}
+		return currentCheckID
+	}
+
 	switch action {
 	case models.StepActionApproved, models.StepActionVerified:
-		nextStepID = currentStep.NextStepOnApprove
-		if currentStep.IsTerminal {
+		nextStepID = resolveNextStep(currentStep.NextStepOnApprove)
+		// If current step is terminal and it didn't bypass to a new step
+		if currentStep.IsTerminal && nextStepID == nil && !isTerminal {
 			isTerminal = true
 			terminalStatus = currentStep.TerminalStatus
 		}
 	case models.StepActionRejected, models.StepActionNotVerified:
-		nextStepID = currentStep.NextStepOnReject
-		if currentStep.NextStepOnReject == nil {
+		nextStepID = resolveNextStep(currentStep.NextStepOnReject)
+		// If current step rejects directly, or it bypassed to the end without finding a next step
+		if currentStep.NextStepOnReject == nil && !isTerminal {
 			isTerminal = true
 			terminalStatus = models.StatusRejected
 		}
 	case models.StepActionCategorizedAL, models.StepActionCategorizedUL:
 		// For categorization steps, move to next step
-		nextStepID = currentStep.NextStepOnApprove
-		isTerminal = currentStep.IsTerminal
-		if isTerminal {
+		nextStepID = resolveNextStep(currentStep.NextStepOnApprove)
+		if currentStep.IsTerminal && nextStepID == nil && !isTerminal {
+			isTerminal = true
 			terminalStatus = models.StatusApproved
 		}
 	case models.StepActionRequestedDocs:
@@ -292,7 +326,7 @@ func (s *WorkflowService) ProcessActionWithTx(
 	case models.StepActionEscalated:
 		// Move to fallback step if configured
 		if currentStep.FallbackStepID != nil {
-			nextStepID = currentStep.FallbackStepID
+			nextStepID = resolveNextStep(currentStep.FallbackStepID)
 		} else {
 			isTerminal = true
 			terminalStatus = models.StatusEscalated
@@ -890,6 +924,16 @@ func (s *WorkflowService) EvaluateConditions(step *models.WorkflowStep, request 
 		}
 	}
 
+	// Check negative balance requirement
+	if requiresHR, ok := step.Conditions["requires_hr_if_negative"].(bool); ok && requiresHR {
+		if step.ResponsibleRole == models.RoleHR && !request.IsNegativeBalance {
+			// If this step is for HR but the balance is NOT negative, we can auto-skip this condition
+			// But EvaluateConditions usually strictly blocks progression, so returning false means "Condition not met, cannot approve".
+			// Wait, evaluated conditions are usually for stopping progression (e.g. min advance, require docs).
+			// If we want skipping, EvaluateConditions is not the right place. We should implement bypass logic in ProcessActionWithTx instead.
+		}
+	}
+
 	return true, ""
 }
 
@@ -1008,6 +1052,7 @@ func (s *WorkflowService) SeedDefaultWorkflows() error {
 func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 	workflowID := uuid.New()
 	hodStepID := uuid.New()
+	hrNegativeReviewID := uuid.New()
 	hrFallbackStepID := uuid.New()
 	approvedStepID := uuid.New()
 
@@ -1015,7 +1060,7 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 		ID:           workflowID,
 		LeaveType:    models.LeaveTypeAnnual,
 		WorkflowName: "Annual Leave Approval",
-		Description:  "HOD approval with 7-day timeout for HR Fallback",
+		Description:  "HOD approval. Requires HR review if balance is negative.",
 		FirstStepID:  &hodStepID,
 		IsActive:     true,
 		CreatedAt:    time.Now(),
@@ -1034,7 +1079,22 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 			TimeoutDays:       7,
 			TimeoutAction:     models.TimeoutFallback,
 			FallbackStepID:    &hrFallbackStepID,
+			NextStepOnApprove: &hrNegativeReviewID,
+			NotifyRoles:       models.JSONArray{"manager"},
+			CreatedAt:         time.Now(),
+			UpdatedAt:         time.Now(),
+		},
+		{
+			ID:                hrNegativeReviewID,
+			WorkflowID:        workflowID,
+			StepOrder:         2,
+			StepName:          "hr_negative_balance_review",
+			StepLabel:         "HR Negative Balance Review",
+			ResponsibleRole:   models.RoleHR,
+			ActionType:        models.ActionReview,
+			TimeoutDays:       7,
 			NextStepOnApprove: &approvedStepID,
+			Conditions:        models.JSONMap{"requires_hr_if_negative": true},
 			NotifyRoles:       models.JSONArray{"manager"},
 			CreatedAt:         time.Now(),
 			UpdatedAt:         time.Now(),
@@ -1042,13 +1102,13 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 		{
 			ID:                hrFallbackStepID,
 			WorkflowID:        workflowID,
-			StepOrder:         2,
+			StepOrder:         3,
 			StepName:          "hr_fallback",
 			StepLabel:         "HR Decision (HOD Timeout)",
 			ResponsibleRole:   models.RoleHR,
 			ActionType:        models.ActionApprove,
 			TimeoutDays:       3, // Optional: give HR 3 days
-			NextStepOnApprove: &approvedStepID,
+			NextStepOnApprove: &hrNegativeReviewID,
 			NotifyRoles:       models.JSONArray{"manager"},
 			CreatedAt:         time.Now(),
 			UpdatedAt:         time.Now(),
@@ -1056,7 +1116,7 @@ func (s *WorkflowService) seedAnnualLeaveWorkflow() error {
 		{
 			ID:              approvedStepID,
 			WorkflowID:      workflowID,
-			StepOrder:       3,
+			StepOrder:       4,
 			StepName:        "approved",
 			StepLabel:       "Approved",
 			ResponsibleRole: models.RoleHR, // Just a terminal role label

@@ -68,6 +68,7 @@ func TestChronologyAndBalance(t *testing.T) {
 		Year:             time.Now().Year(),
 		TotalEntitlement: 14,
 		Used:             0,
+		IsOverridden:     true,
 	}
 	db.Create(&balance)
 

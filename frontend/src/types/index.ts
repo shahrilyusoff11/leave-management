@@ -37,6 +37,7 @@ export interface LeaveRequest {
     created_at: string;
     workflow_state?: LeaveRequestWorkflowState;
     can_action?: boolean;
+    is_negative_balance?: boolean;
 }
 
 export interface LeaveBalance {

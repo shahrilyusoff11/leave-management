@@ -121,6 +121,7 @@ func TestFullWorkflowCycle(t *testing.T) {
 		Year:             time.Now().Year(),
 		TotalEntitlement: 10,
 		Used:             0,
+		IsOverridden:     true,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
