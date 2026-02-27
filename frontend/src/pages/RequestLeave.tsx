@@ -53,7 +53,7 @@ interface LeaveTypeConfig {
     requires_attachment: boolean;
 }
 
-import type { BlackoutDate } from '../types';
+import type { BlackoutDate, LeaveBalance } from '../types';
 
 const RequestLeave: React.FC = () => {
     const navigate = useNavigate();
@@ -65,6 +65,7 @@ const RequestLeave: React.FC = () => {
     const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
     const [leaveConfigs, setLeaveConfigs] = useState<LeaveTypeConfig[]>([]);
     const [blackoutDates, setBlackoutDates] = useState<BlackoutDate[]>([]);
+    const [balances, setBalances] = useState<LeaveBalance[]>([]);
     const { register, handleSubmit, setValue, formState: { errors }, watch } = useForm<RequestFormData>({
         resolver: zodResolver(requestSchema),
         defaultValues: {
@@ -89,10 +90,11 @@ const RequestLeave: React.FC = () => {
         const fetchData = async () => {
             try {
                 const currentYear = new Date().getFullYear();
-                const [holidaysRes, configsRes, blackoutRes] = await Promise.all([
+                const [holidaysRes, configsRes, blackoutRes, balancesRes] = await Promise.all([
                     api.get(`/public-holidays?year=${currentYear}`),
                     api.get('/leave-type-configs'),
-                    api.get('/blackout-dates')
+                    api.get('/blackout-dates'),
+                    api.get('/leave-balances')
                 ]);
 
                 if (Array.isArray(holidaysRes.data)) {
@@ -105,6 +107,10 @@ const RequestLeave: React.FC = () => {
 
                 if (Array.isArray(blackoutRes.data)) {
                     setBlackoutDates(blackoutRes.data);
+                }
+
+                if (Array.isArray(balancesRes.data)) {
+                    setBalances(balancesRes.data);
                 }
             } catch (err) {
                 console.error('Failed to fetch data', err);
@@ -348,9 +354,30 @@ const RequestLeave: React.FC = () => {
                             </div>
 
                             {startDate && endDate && (
-                                <div className="p-3 bg-blue-50 text-blue-700 text-sm rounded-lg flex items-center justify-between">
-                                    <span>Estimated Duration:</span>
-                                    <span className="font-bold">{calculateDuration()} days</span>
+                                <div className="space-y-2">
+                                    <div className="p-3 bg-blue-50 text-blue-700 text-sm rounded-lg flex items-center justify-between">
+                                        <span>Estimated Duration:</span>
+                                        <span className="font-bold">{calculateDuration()} days</span>
+                                    </div>
+
+                                    {(() => {
+                                        const duration = calculateDuration();
+                                        const currentBalance = balances.find(b => b.leave_type === leaveType);
+                                        const available = currentBalance ? (currentBalance.total_entitlement + currentBalance.carry_forward_days - currentBalance.used) : 0;
+
+                                        if (duration > available) {
+                                            return (
+                                                <div className="p-3 bg-amber-50 text-amber-800 text-sm rounded-lg border border-amber-200">
+                                                    <p className="font-semibold mb-1">Notice: Negative Balance Application</p>
+                                                    <p>
+                                                        You are requesting <strong>{duration} days</strong> but only have <strong>{available} days</strong> of {leaveType} leave available.
+                                                        If submitted, this request will result in a negative balance and may require additional HR review or be directly rejected based on company policy.
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                 </div>
                             )}
 

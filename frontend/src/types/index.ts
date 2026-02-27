@@ -48,6 +48,7 @@ export interface LeaveBalance {
     total_entitlement: number;
     used: number;
     carried_forward: number;
+    carry_forward_days: number;
     adjusted: number;
     remaining: number; // Calculated, or implicit
 }
