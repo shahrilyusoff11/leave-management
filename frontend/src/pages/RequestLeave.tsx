@@ -94,7 +94,7 @@ const RequestLeave: React.FC = () => {
                     api.get(`/public-holidays?year=${currentYear}`),
                     api.get('/leave-type-configs'),
                     api.get('/blackout-dates'),
-                    api.get('/leave-balances')
+                    api.get('/leave-balance')
                 ]);
 
                 if (Array.isArray(holidaysRes.data)) {
@@ -109,7 +109,13 @@ const RequestLeave: React.FC = () => {
                     setBlackoutDates(blackoutRes.data);
                 }
 
-                if (Array.isArray(balancesRes.data)) {
+                if (balancesRes.data && !Array.isArray(balancesRes.data)) {
+                    const formattedBalances = Object.keys(balancesRes.data).map(key => ({
+                        leave_type: key,
+                        ...balancesRes.data[key]
+                    })) as LeaveBalance[];
+                    setBalances(formattedBalances);
+                } else if (Array.isArray(balancesRes.data)) {
                     setBalances(balancesRes.data);
                 }
             } catch (err) {
