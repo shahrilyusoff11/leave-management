@@ -21,11 +21,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const storedToken = localStorage.getItem('token');
         const storedUser = localStorage.getItem('user');
 
-        if (storedToken && storedUser) {
-            setToken(storedToken);
-            setUser(JSON.parse(storedUser));
+        try {
+            if (storedToken && storedUser && storedUser !== 'undefined') {
+                setToken(storedToken);
+                setUser(JSON.parse(storedUser));
+            } else if (storedUser === 'undefined') {
+                localStorage.removeItem('user');
+                localStorage.removeItem('token');
+            }
+        } catch (error) {
+            console.error("Failed to parse user local storage", error);
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }, []);
 
     const login = (newToken: string, newUser: User) => {
