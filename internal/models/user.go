@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,13 +19,22 @@ const (
 	RoleStaff    UserRole = "staff"
 )
 
+type Role struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key" json:"id"`
+	Name      UserRole  `gorm:"type:varchar(20);uniqueIndex;not null" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type User struct {
 	ID                uuid.UUID      `gorm:"type:uuid;primary_key" json:"id"`
 	Email             string         `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash      string         `gorm:"not null" json:"-"`
 	FirstName         string         `gorm:"not null" json:"first_name"`
 	LastName          string         `gorm:"not null" json:"last_name"`
-	Role              UserRole       `gorm:"type:varchar(20);not null" json:"role"`
+	RoleID            uuid.UUID      `gorm:"type:uuid;index" json:"-"`
+	RoleRef           *Role          `gorm:"foreignKey:RoleID" json:"-"`
+	Role              UserRole       `gorm:"-" json:"role"`
 	DepartmentID      *uuid.UUID     `json:"department_id"`
 	DepartmentRef     *Department    `gorm:"foreignKey:DepartmentID" json:"department_ref,omitempty"`
 	Position          string         `json:"position"`
@@ -46,5 +56,67 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
 	}
+	return nil
+}
+
+func (r *Role) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
+	}
+	return nil
+}
+
+func (u *User) BeforeSave(tx *gorm.DB) error {
+	if u.Role == "" {
+		if u.RoleRef != nil {
+			u.Role = u.RoleRef.Name
+		} else if u.RoleID != uuid.Nil {
+			var existingRole Role
+			if err := tx.First(&existingRole, "id = ?", u.RoleID).Error; err != nil {
+				return err
+			}
+			u.RoleRef = &existingRole
+			u.Role = existingRole.Name
+		}
+	}
+
+	if u.Role == "" {
+		return fmt.Errorf("role is required")
+	}
+
+	var role Role
+	if err := tx.Where("name = ?", u.Role).First(&role).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+
+		role = Role{Name: u.Role}
+		if err := tx.Create(&role).Error; err != nil {
+			return err
+		}
+	}
+
+	u.RoleID = role.ID
+	u.RoleRef = &role
+	return nil
+}
+
+func (u *User) AfterFind(tx *gorm.DB) error {
+	if u.RoleRef != nil {
+		u.Role = u.RoleRef.Name
+		return nil
+	}
+
+	if u.RoleID == uuid.Nil {
+		return nil
+	}
+
+	var role Role
+	if err := tx.First(&role, "id = ?", u.RoleID).Error; err != nil {
+		return err
+	}
+
+	u.RoleRef = &role
+	u.Role = role.Name
 	return nil
 }
