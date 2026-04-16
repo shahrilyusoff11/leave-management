@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { Filter, GitBranch, FileText } from 'lucide-react';
+import { Filter, GitBranch, FileText, History } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import type { LeaveRequest } from '../types';
 import { Card } from '../components/ui/Card';
@@ -8,17 +9,29 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { getDisplayDuration, formatDuration } from '../utils/duration';
+import LeaveHistoryModal from '../components/LeaveHistoryModal';
 import WorkflowStateDisplay from '../components/WorkflowStateDisplay';
 import { useAuth } from '../context/AuthContext';
 
 const HRLeaves: React.FC = () => {
     const { user } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('all');
     const [deptFilter, setDeptFilter] = useState('');
     const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString());
+    const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+    const [selectedLeaveType, setSelectedLeaveType] = useState<string>('');
     const [showWorkflow, setShowWorkflow] = useState<Record<string, boolean>>({});
+    const requestRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+
+    const openHistoryModal = (req: LeaveRequest) => {
+        setSelectedRequestId(req.id);
+        setSelectedLeaveType(req.leave_type);
+        setHistoryModalOpen(true);
+    };
 
     const fetchRequests = async () => {
         setLoading(true);
@@ -43,6 +56,31 @@ const HRLeaves: React.FC = () => {
     useEffect(() => {
         fetchRequests();
     }, [statusFilter, yearFilter]); // Trigger on simple filters directly
+
+    useEffect(() => {
+        const requestId = searchParams.get('requestId');
+        if (!requestId || requests.length === 0) return;
+
+        const matchingRequest = requests.find(req => req.id === requestId);
+        if (!matchingRequest) return;
+
+        setShowWorkflow(prev => ({ ...prev, [requestId]: true }));
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.delete('requestId');
+            return next;
+        }, { replace: true });
+    }, [requests, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const expandedRequestId = Object.keys(showWorkflow).find(id => showWorkflow[id]);
+        if (!expandedRequestId) return;
+
+        const row = requestRowRefs.current[expandedRequestId];
+        if (!row) return;
+
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [showWorkflow]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
@@ -163,7 +201,10 @@ const HRLeaves: React.FC = () => {
                             ) : (
                                 requests.map((req) => (
                                     <React.Fragment key={req.id}>
-                                        <tr className="hover:bg-slate-50 transition-colors">
+                                        <tr
+                                            ref={(element) => { requestRowRefs.current[req.id] = element; }}
+                                            className="hover:bg-slate-50 transition-colors"
+                                        >
                                             <td className="px-6 py-4">
                                                 <div>
                                                     <p className="font-medium text-slate-900">{req.user?.first_name} {req.user?.last_name}</p>
@@ -230,6 +271,15 @@ const HRLeaves: React.FC = () => {
                                                     >
                                                         <GitBranch className="h-4 w-4" />
                                                     </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 p-0 rounded-full bg-slate-50 text-slate-600 hover:bg-slate-100"
+                                                        onClick={() => openHistoryModal(req)}
+                                                        title="View History"
+                                                    >
+                                                        <History className="h-4 w-4" />
+                                                    </Button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -254,6 +304,13 @@ const HRLeaves: React.FC = () => {
                     </table>
                 </div>
             </Card>
+
+            <LeaveHistoryModal
+                isOpen={historyModalOpen}
+                onClose={() => setHistoryModalOpen(false)}
+                requestId={selectedRequestId}
+                leaveType={selectedLeaveType}
+            />
         </div>
     );
 };

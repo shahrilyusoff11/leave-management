@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import type { User, UserDelegation } from '../types';
 import { format } from 'date-fns';
 import { Calendar, User as UserIcon, X, Search, Plus, Trash2 } from 'lucide-react';
@@ -8,8 +9,11 @@ import { Input } from '../components/ui/Input';
 import { useToast } from '../components/ui/Toast';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
+import { useAuth } from '../context/AuthContext';
+import { canManageTeam } from '../utils/roles';
 
 const Delegations: React.FC = () => {
+    const { user } = useAuth();
     const [delegations, setDelegations] = useState<UserDelegation[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
@@ -28,6 +32,10 @@ const Delegations: React.FC = () => {
 
     // Cancel State
     const [cancelId, setCancelId] = useState<string | null>(null);
+
+    if (!canManageTeam(user?.role)) {
+        return <Navigate to="/dashboard" replace />;
+    }
 
     useEffect(() => {
         fetchDelegations();

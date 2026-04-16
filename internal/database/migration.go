@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 	"leave-management-system/internal/models"
 	"leave-management-system/internal/services"
@@ -86,8 +87,15 @@ func seedRoles(db *gorm.DB) error {
 	}
 
 	for _, role := range defaultRoles {
-		if err := db.Where("name = ?", role.Name).FirstOrCreate(&role).Error; err != nil {
-			return err
+		var existing models.Role
+		if err := db.Where("name = ?", role.Name).First(&existing).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+
+			if err := db.Create(&role).Error; err != nil {
+				return err
+			}
 		}
 	}
 

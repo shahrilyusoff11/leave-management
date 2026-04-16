@@ -225,6 +225,27 @@ const LeaveTypeSettings: React.FC = () => {
                                         />
                                     </div>
 
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-slate-700">Prorate Options</label>
+                                        <select
+                                            value={editForm.prorate_type || 'none'}
+                                            onChange={(e) => setEditForm({
+                                                ...editForm,
+                                                prorate_type: e.target.value as 'none' | 'first_year' | 'continuous'
+                                            })}
+                                            className="w-full text-sm border-slate-300 rounded-md shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                                        >
+                                            <option value="none">None (Full Entitlement)</option>
+                                            <option value="first_year">Prorate First Year Only</option>
+                                            <option value="continuous">Continuous Prorate (Earned Leave)</option>
+                                        </select>
+                                        <p className="text-xs text-slate-500">
+                                            {editForm.prorate_type === 'continuous' && "Leaves are earned incrementally each month."}
+                                            {editForm.prorate_type === 'first_year' && "Earned incrementally in the first year, full thereafter."}
+                                            {editForm.prorate_type === 'none' && "Employees receive the full entitlement immediately."}
+                                        </p>
+                                    </div>
+
                                     {/* Years of Service Bonus Editor */}
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center">
@@ -337,27 +358,6 @@ const LeaveTypeSettings: React.FC = () => {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <div className="space-y-1">
-                                            <label className="text-sm font-medium text-slate-700">Prorate Options</label>
-                                            <select
-                                                value={editForm.prorate_type || 'none'}
-                                                onChange={(e) => setEditForm({
-                                                    ...editForm,
-                                                    prorate_type: e.target.value as 'none' | 'first_year' | 'continuous'
-                                                })}
-                                                className="w-full text-sm border-slate-300 rounded-md shadow-sm focus:border-brand-500 focus:ring-brand-500"
-                                            >
-                                                <option value="none">None (Full Entitlement)</option>
-                                                <option value="first_year">Prorate First Year Only</option>
-                                                <option value="continuous">Continuous Prorate (Earned Leave)</option>
-                                            </select>
-                                            <p className="text-xs text-slate-500">
-                                                {editForm.prorate_type === 'continuous' && "Leaves are earned incrementally each month."}
-                                                {editForm.prorate_type === 'first_year' && "Earned incrementally in the first year, full thereafter."}
-                                                {editForm.prorate_type === 'none' && "Employees receive the full entitlement immediately."}
-                                            </p>
-                                        </div>
-
                                         <label className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"

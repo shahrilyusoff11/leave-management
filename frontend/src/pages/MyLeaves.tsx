@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Calendar, Filter, History, FileText, GitBranch } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import type { LeaveRequest } from '../types';
 import { Card } from '../components/ui/Card';
@@ -14,6 +15,7 @@ import { useToast } from '../components/ui/Toast';
 
 const MyLeaves: React.FC = () => {
     const { showToast } = useToast();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
@@ -21,6 +23,7 @@ const MyLeaves: React.FC = () => {
     const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
     const [selectedLeaveType, setSelectedLeaveType] = useState<string>('');
     const [showWorkflow, setShowWorkflow] = useState<Record<string, boolean>>({});
+    const requestRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
     // Confirmation Modal State
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
@@ -50,6 +53,31 @@ const MyLeaves: React.FC = () => {
     useEffect(() => {
         fetchRequests();
     }, []);
+
+    useEffect(() => {
+        const requestId = searchParams.get('requestId');
+        if (!requestId || requests.length === 0) return;
+
+        const matchingRequest = requests.find(req => req.id === requestId);
+        if (!matchingRequest) return;
+
+        setShowWorkflow(prev => ({ ...prev, [requestId]: true }));
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.delete('requestId');
+            return next;
+        }, { replace: true });
+    }, [requests, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const expandedRequestId = Object.keys(showWorkflow).find(id => showWorkflow[id]);
+        if (!expandedRequestId) return;
+
+        const row = requestRowRefs.current[expandedRequestId];
+        if (!row) return;
+
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [showWorkflow]);
 
     const initiateCancel = (id: string) => {
         setPendingCancelId(id);
@@ -151,7 +179,10 @@ const MyLeaves: React.FC = () => {
                             ) : (
                                 filteredRequests.map((req) => (
                                     <React.Fragment key={req.id}>
-                                        <tr className="hover:bg-slate-50 transition-colors">
+                                        <tr
+                                            ref={(element) => { requestRowRefs.current[req.id] = element; }}
+                                            className="hover:bg-slate-50 transition-colors"
+                                        >
                                             <td className="px-4 py-4">
                                                 <span className="capitalize font-medium text-slate-900">{req.leave_type}</span>
                                             </td>

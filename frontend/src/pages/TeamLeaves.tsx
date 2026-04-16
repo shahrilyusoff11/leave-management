@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { Filter, Check, History, FileText, GitBranch } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import type { LeaveRequest } from '../types';
 import { Card } from '../components/ui/Card';
@@ -11,6 +12,7 @@ import LeaveHistoryModal from '../components/LeaveHistoryModal';
 import WorkflowStateDisplay from '../components/WorkflowStateDisplay';
 
 const TeamLeaves: React.FC = () => {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
@@ -20,6 +22,7 @@ const TeamLeaves: React.FC = () => {
     const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
     const [selectedLeaveType, setSelectedLeaveType] = useState<string>('');
     const [showWorkflow, setShowWorkflow] = useState<Record<string, boolean>>({});
+    const requestRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
     const openHistoryModal = (req: LeaveRequest) => {
         setSelectedRequestId(req.id);
@@ -44,6 +47,31 @@ const TeamLeaves: React.FC = () => {
     useEffect(() => {
         fetchRequests();
     }, []);
+
+    useEffect(() => {
+        const requestId = searchParams.get('requestId');
+        if (!requestId || requests.length === 0) return;
+
+        const matchingRequest = requests.find(req => req.id === requestId);
+        if (!matchingRequest) return;
+
+        setShowWorkflow(prev => ({ ...prev, [requestId]: true }));
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.delete('requestId');
+            return next;
+        }, { replace: true });
+    }, [requests, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const expandedRequestId = Object.keys(showWorkflow).find(id => showWorkflow[id]);
+        if (!expandedRequestId) return;
+
+        const row = requestRowRefs.current[expandedRequestId];
+        if (!row) return;
+
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [showWorkflow]);
 
     const getStatusVariant = (status: string) => {
         switch (status) {
@@ -122,7 +150,10 @@ const TeamLeaves: React.FC = () => {
                             ) : (
                                 filteredRequests.map((req) => (
                                     <React.Fragment key={req.id}>
-                                        <tr className="hover:bg-slate-50 transition-colors">
+                                        <tr
+                                            ref={(element) => { requestRowRefs.current[req.id] = element; }}
+                                            className="hover:bg-slate-50 transition-colors"
+                                        >
                                             <td className="px-4 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="h-8 w-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center font-bold text-xs shrink-0">

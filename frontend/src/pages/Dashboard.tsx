@@ -78,6 +78,16 @@ const Dashboard: React.FC = () => {
         return b.total_entitlement - b.used + b.carried_forward + ((b as any).adjusted || 0);
     };
 
+    const formatLeaveDays = (value: number) => {
+        const roundedToHalfDay = Math.round(value * 2) / 2;
+
+        if (Number.isInteger(roundedToHalfDay)) {
+            return roundedToHalfDay.toString();
+        }
+
+        return roundedToHalfDay.toFixed(1);
+    };
+
     return (
         <div className="space-y-8">
             <div>
@@ -101,7 +111,7 @@ const Dashboard: React.FC = () => {
                             <CardTitle className="text-sm font-medium text-slate-500 uppercase tracking-wider">Annual Leave</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-4xl font-bold text-slate-900">{getRemaining(annual)}</div>
+                            <div className="text-4xl font-bold text-slate-900">{formatLeaveDays(getRemaining(annual))}</div>
                             <p className="text-sm text-slate-500 mt-1">days remaining</p>
                             <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                                 <div
@@ -129,7 +139,7 @@ const Dashboard: React.FC = () => {
                             <CardTitle className="text-sm font-medium text-slate-500 uppercase tracking-wider">Sick Leave</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-4xl font-bold text-slate-900">{getRemaining(sick)}</div>
+                            <div className="text-4xl font-bold text-slate-900">{formatLeaveDays(getRemaining(sick))}</div>
                             <p className="text-sm text-slate-500 mt-1">days remaining</p>
                             <div className="mt-4 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                                 <div

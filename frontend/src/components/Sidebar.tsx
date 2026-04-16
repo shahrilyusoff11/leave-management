@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../utils/cn';
 import type { UserRole } from '../types';
+import { canManageTeam } from '../utils/roles';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -93,7 +94,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
                         <NavItem to="/dashboard" icon={LayoutDashboard}>Dashboard</NavItem>
                         <NavItem to="/my-leaves" icon={CalendarDays}>My Leaves</NavItem>
-                        <NavItem to="/delegations" icon={User}>My Delegations</NavItem>
+                        {canManageTeam(user?.role) && (
+                            <NavItem to="/delegations" icon={User}>My Delegations</NavItem>
+                        )}
                         <NavItem to="/request-leave" icon={PlusCircle}>Request Leave</NavItem>
 
                         {/* Manager/HOD: Team management */}

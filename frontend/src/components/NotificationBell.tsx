@@ -1,11 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Check, Circle, Activity, FileText, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 import type { Notification } from '../context/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '../context/AuthContext';
 
 const NotificationBell: React.FC = () => {
     const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+    const { user } = useAuth();
+    const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -28,12 +32,33 @@ const NotificationBell: React.FC = () => {
         }
     };
 
+    const getNotificationTarget = (notif: Notification) => {
+        const requestId = notif.related_entity_id;
+        const query = requestId ? `?requestId=${requestId}` : '';
+
+        if (notif.type === 'workflow') {
+            if (user?.role === 'hr' || user?.role === 'admin' || user?.role === 'sysadmin') {
+                return `/hr-leaves${query}`;
+            }
+
+            if (user?.role === 'manager' || user?.role === 'hod') {
+                return `/team-leaves${query}`;
+            }
+        }
+
+        if (notif.type === 'leave' && (user?.role === 'manager' || user?.role === 'hod')) {
+            return `/team-leaves${query}`;
+        }
+
+        return `/my-leaves${query}`;
+    };
+
     const handleNotificationClick = (notif: Notification) => {
         if (!notif.is_read) {
             markAsRead(notif.id);
         }
         setIsOpen(false);
-        // We could also navigate to the specific entity here if needed
+        navigate(getNotificationTarget(notif));
     };
 
     return (
