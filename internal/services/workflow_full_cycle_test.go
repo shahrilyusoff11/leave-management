@@ -21,7 +21,7 @@ func TestFullWorkflowCycle(t *testing.T) {
 	fmt.Println("DEBUG: Starting TestFullWorkflowCycle")
 
 	// --- 1. Setup Database & Services ---
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("file:workflow_full_cycle?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 
 	// Migrate models

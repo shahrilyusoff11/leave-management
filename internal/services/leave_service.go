@@ -308,6 +308,14 @@ func (ls *LeaveService) ProcessWorkflowAction(requestID, actorID uuid.UUID, acti
 			actor.ID, workflowState.CurrentStep.ResponsibleRole)
 	}
 
+	if !isWorkflowActionAllowed(workflowState.CurrentStep.ActionType, action) {
+		return nil, fmt.Errorf("action %s is not allowed for step type %s", action, workflowState.CurrentStep.ActionType)
+	}
+
+	if ok, reason := ls.workflowSvc.EvaluateConditions(workflowState.CurrentStep, &request); !ok {
+		return nil, errors.New(reason)
+	}
+
 	// 3. Perform Action (Transaction for Writes)
 	var updatedState *models.LeaveRequestWorkflowState
 	err = ls.db.Transaction(func(tx *gorm.DB) error {
@@ -745,6 +753,27 @@ func getConversionAction(newType models.LeaveType) models.WorkflowStepAction {
 		return models.StepActionConvertedToEL
 	default:
 		return models.StepActionApproved
+	}
+}
+
+func isWorkflowActionAllowed(actionType models.WorkflowActionType, action models.WorkflowStepAction) bool {
+	if actionType == "" {
+		return true
+	}
+
+	switch actionType {
+	case models.ActionApprove:
+		return action == models.StepActionApproved || action == models.StepActionRejected || action == models.StepActionEscalated
+	case models.ActionVerify:
+		return action == models.StepActionVerified || action == models.StepActionNotVerified || action == models.StepActionEscalated
+	case models.ActionReview:
+		return action == models.StepActionApproved || action == models.StepActionRejected || action == models.StepActionRequestedDocs || action == models.StepActionEscalated
+	case models.ActionCategorize:
+		return action == models.StepActionCategorizedAL || action == models.StepActionCategorizedUL || action == models.StepActionEscalated
+	case models.ActionSubmit:
+		return action == models.StepActionApproved || action == models.StepActionEscalated
+	default:
+		return false
 	}
 }
 

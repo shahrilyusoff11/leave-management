@@ -107,6 +107,7 @@ const MyLeaves: React.FC = () => {
             case 'approved': return 'success';
             case 'rejected': return 'danger';
             case 'pending': return 'warning';
+            case 'escalated': return 'warning';
             case 'cancelled': return 'secondary';
             default: return 'default';
         }
@@ -285,7 +286,7 @@ const MyLeaves: React.FC = () => {
                                                         applicantId={req.user_id}
                                                         currentStatus={req.status}
                                                         onActionComplete={fetchRequests}
-                                                        showActions={true} // Employee can upload docs if requested
+                                                        showActions={false}
                                                         isNegativeBalance={req.is_negative_balance}
                                                     />
                                                 </td>

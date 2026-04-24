@@ -58,6 +58,7 @@ const Dashboard: React.FC = () => {
             case 'approved': return 'success';
             case 'rejected': return 'danger';
             case 'pending': return 'warning';
+            case 'escalated': return 'warning';
             default: return 'default';
         }
     };
@@ -245,7 +246,7 @@ const Dashboard: React.FC = () => {
                                                             applicantId={req.user_id}
                                                             currentStatus={req.status}
                                                             onActionComplete={fetchData}
-                                                            showActions={req.status === 'pending'} // Dashboard usually shows actionables
+                                                            showActions={false}
                                                             isNegativeBalance={req.is_negative_balance}
                                                         />
                                                     </td>

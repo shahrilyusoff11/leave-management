@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"leave-management-system/internal/models"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -333,6 +334,15 @@ func (s *WorkflowService) ProcessActionWithTx(
 		}
 	default:
 		return nil, fmt.Errorf("unknown action: %s", action)
+	}
+
+	if !isTerminal && nextStepID != nil {
+		var nextStep models.WorkflowStep
+		if err := tx.First(&nextStep, "id = ?", *nextStepID).Error; err == nil && isTerminalEndpointStep(&nextStep) {
+			isTerminal = true
+			terminalStatus = nextStep.TerminalStatus
+			nextStepID = nil
+		}
 	}
 
 	// Update state
@@ -801,13 +811,14 @@ func (s *WorkflowService) UpdateWorkflow(workflow *models.LeaveWorkflow) error {
 // CreateWorkflowStep creates a new step in a workflow
 func (s *WorkflowService) CreateWorkflowStep(step *models.WorkflowStep) error {
 	// Ensure we are editing a safe version
-	targetWorkflowID, _, err := s.EnsureEditableWorkflow(step.WorkflowID)
+	targetWorkflowID, stepMap, err := s.EnsureEditableWorkflow(step.WorkflowID)
 	if err != nil {
 		return err
 	}
 
 	// Update the step to point to the correct workflow (could be new version)
 	step.WorkflowID = targetWorkflowID
+	remapWorkflowStepLinks(step, stepMap)
 
 	step.ID = uuid.New()
 	step.CreatedAt = time.Now()
@@ -941,6 +952,43 @@ func (s *WorkflowService) EvaluateConditions(step *models.WorkflowStep, request 
 	}
 
 	return true, ""
+}
+
+func isTerminalEndpointStep(step *models.WorkflowStep) bool {
+	if step == nil || !step.IsTerminal {
+		return false
+	}
+
+	if step.NextStepOnApprove != nil || step.NextStepOnReject != nil || step.FallbackStepID != nil {
+		return false
+	}
+
+	stepName := strings.ToLower(step.StepName)
+	return stepName == "approved" || stepName == "rejected" || stepName == "convert_unpaid"
+}
+
+func remapWorkflowStepLinks(step *models.WorkflowStep, stepMap map[uuid.UUID]uuid.UUID) {
+	if step == nil || len(stepMap) == 0 {
+		return
+	}
+
+	if step.NextStepOnApprove != nil {
+		if newID, ok := stepMap[*step.NextStepOnApprove]; ok {
+			step.NextStepOnApprove = &newID
+		}
+	}
+
+	if step.NextStepOnReject != nil {
+		if newID, ok := stepMap[*step.NextStepOnReject]; ok {
+			step.NextStepOnReject = &newID
+		}
+	}
+
+	if step.FallbackStepID != nil {
+		if newID, ok := stepMap[*step.FallbackStepID]; ok {
+			step.FallbackStepID = &newID
+		}
+	}
 }
 
 // FixTerminalStepEndpoints is a one-time migration that removes dummy terminal

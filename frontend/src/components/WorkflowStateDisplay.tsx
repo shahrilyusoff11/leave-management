@@ -34,6 +34,18 @@ const actionLabels: Record<string, string> = {
     'timeout_applied': 'Timeout Applied',
 };
 
+const actionButtonLabels: Record<string, string> = {
+    approve: 'Approve',
+    reject: 'Reject',
+    verify: 'Verify',
+    not_verify: 'Not Verify',
+    request_docs: 'Request Docs',
+    escalate: 'Escalate',
+    categorize_al: 'Categorize AL',
+    categorize_unpaid: 'Categorize Unpaid',
+    convert_leave_type: 'Convert Leave Type',
+};
+
 const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
     requestId,
     applicantId,
@@ -139,17 +151,23 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
         if (!workflowState?.current_step) return [];
 
         const actionType = workflowState.current_step.action_type;
+        if (!actionType) {
+            return ['approve', 'reject'];
+        }
+
         switch (actionType) {
             case 'approve':
-                return ['approve', 'reject', 'request_docs'];
+                return ['approve', 'reject', 'escalate'];
             case 'verify':
-                return ['verify', 'not_verify', 'request_docs'];
+                return ['verify', 'not_verify', 'escalate'];
             case 'review':
                 return ['approve', 'reject', 'escalate', 'request_docs'];
             case 'categorize':
-                return ['categorize_al', 'categorize_unpaid'];
+                return ['categorize_al', 'categorize_unpaid', 'escalate'];
+            case 'submit':
+                return ['approve', 'escalate'];
             default:
-                return ['approve', 'reject'];
+                return [];
         }
     };
 
@@ -175,7 +193,13 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
             <div className="workflow-state-header">
                 <span className="workflow-label">Workflow Status</span>
                 {isComplete ? (
-                    <Badge variant={workflowState.final_status === 'approved' ? 'success' : 'danger'}>
+                    <Badge variant={
+                        workflowState.final_status === 'approved'
+                            ? 'success'
+                            : workflowState.final_status === 'escalated'
+                                ? 'warning'
+                                : 'danger'
+                    }>
                         {workflowState.final_status}
                     </Badge>
                 ) : (
@@ -246,8 +270,6 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                     )}
 
                     {showActions && currentStatus === 'pending' && workflowState.action_taken !== 'requested_docs' && (
-                        user?.role === currentStep.responsible_role || user?.role === 'sysadmin'
-                    ) && (
                             <div className="workflow-actions mt-3">
                                 {getAvailableActions().map(action => {
                                     const isReject = action.includes('reject') || action.includes('not');
@@ -280,7 +302,7 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
                                             className={btnClass}
                                         >
                                             <Icon className="w-4 h-4 mr-1.5" />
-                                            {action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                            {actionButtonLabels[action] || action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                                         </Button>
                                     );
                                 })}
@@ -320,11 +342,11 @@ const WorkflowStateDisplay: React.FC<WorkflowStateDisplayProps> = ({
             <Modal
                 isOpen={actionModalOpen}
                 onClose={() => setActionModalOpen(false)}
-                title={`Confirm Action: ${selectedAction.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`}
+                title={`Confirm Action: ${actionButtonLabels[selectedAction] || selectedAction.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`}
             >
                 <div className="workflow-action-modal">
                     <p className="action-description mb-4">
-                        You are about to perform "{selectedAction.replace(/_/g, ' ')}" on this leave request.
+                        You are about to perform "{actionButtonLabels[selectedAction] || selectedAction.replace(/_/g, ' ')}" on this leave request.
                     </p>
 
                     {selectedAction === 'convert_leave_type' && (

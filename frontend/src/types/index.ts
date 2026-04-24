@@ -17,7 +17,7 @@ export interface User {
 }
 
 export type LeaveType = 'annual' | 'sick' | 'maternity' | 'paternity' | 'emergency' | 'unpaid' | 'unrecorded' | 'hospitalization';
-export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'escalated';
 
 export interface LeaveRequest {
     id: string;

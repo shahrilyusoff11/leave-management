@@ -14,6 +14,26 @@ const roleOptions: UserRole[] = ['staff', 'manager', 'hod', 'hr', 'admin', 'sysa
 const actionTypeOptions: WorkflowActionType[] = ['approve', 'verify', 'review', 'categorize', 'submit'];
 const timeoutActionOptions: TimeoutAction[] = ['escalate', 'auto_approve', 'fallback_step', 'convert_leave_type'];
 
+const buildStepPayload = (step: WorkflowStep, workflowStepCount: number) => ({
+    step_name: step.step_name,
+    step_label: step.step_label,
+    step_order: step.step_order || workflowStepCount + 1,
+    responsible_role: step.responsible_role,
+    action_type: step.action_type,
+    timeout_days: step.timeout_days,
+    timeout_action: step.timeout_action,
+    fallback_step_id: step.fallback_step_id || null,
+    convert_to_type: step.convert_to_type || null,
+    conditions: step.conditions || {},
+    next_step_on_approve: step.next_step_on_approve || null,
+    next_step_on_reject: step.next_step_on_reject || null,
+    notify_roles: step.notify_roles || [],
+    requires_document: step.requires_document,
+    document_type: step.document_type || '',
+    is_terminal: step.is_terminal,
+    terminal_status: step.terminal_status || null,
+});
+
 const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) => {
     const [workflow, setWorkflow] = useState<LeaveWorkflow | null>(null);
     const [loading, setLoading] = useState(true);
@@ -41,7 +61,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
     const handleStepUpdate = async (step: WorkflowStep) => {
         setSaving(true);
         try {
-            await api.put(`/admin/workflows/${leaveType}/steps/${step.id}`, step);
+            await api.put(`/admin/workflows/${leaveType}/steps/${step.id}`, buildStepPayload(step, workflow?.steps?.length || 0));
             await fetchWorkflow();
             setEditingStep(null);
             setIsNewStep(false);
@@ -55,19 +75,7 @@ const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ leaveType, onClose }) =
     const handleAddStep = async (step: WorkflowStep) => {
         setSaving(true);
         try {
-            await api.post(`/admin/workflows/${leaveType}/steps`, {
-                step_name: step.step_name,
-                step_label: step.step_label,
-                step_order: (workflow?.steps?.length || 0) + 1,
-                responsible_role: step.responsible_role,
-                action_type: step.action_type,
-                timeout_days: step.timeout_days,
-                timeout_action: step.timeout_action,
-                requires_document: step.requires_document,
-                document_type: step.document_type,
-                is_terminal: step.is_terminal,
-                terminal_status: step.terminal_status,
-            });
+            await api.post(`/admin/workflows/${leaveType}/steps`, buildStepPayload(step, workflow?.steps?.length || 0));
             await fetchWorkflow();
             setEditingStep(null);
             setIsNewStep(false);

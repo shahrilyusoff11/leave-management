@@ -92,6 +92,7 @@ const HRLeaves: React.FC = () => {
             case 'approved': return 'success';
             case 'rejected': return 'danger';
             case 'pending': return 'warning';
+            case 'escalated': return 'warning';
             case 'cancelled': return 'secondary';
             default: return 'default';
         }
@@ -100,6 +101,10 @@ const HRLeaves: React.FC = () => {
     // Helper to check if current user can approve/reject
     const canActionRequest = (req: LeaveRequest) => {
         if (req.status !== 'pending') return false;
+
+        if (typeof req.can_action === 'boolean') {
+            return req.can_action;
+        }
 
         // If workflow state is present, enforce strict role check
         if (req.workflow_state?.current_step) {

@@ -16,7 +16,7 @@ import (
 )
 
 func TestNegativeBalanceWorkflowRouting(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("file:workflow_negative?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 
 	err = db.AutoMigrate(

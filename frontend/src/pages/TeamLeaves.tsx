@@ -78,6 +78,7 @@ const TeamLeaves: React.FC = () => {
             case 'approved': return 'success';
             case 'rejected': return 'danger';
             case 'pending': return 'warning';
+            case 'escalated': return 'warning';
             case 'cancelled': return 'secondary';
             default: return 'default';
         }
