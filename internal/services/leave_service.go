@@ -988,7 +988,7 @@ func (ls *LeaveService) GetUserLeaveBalance(userID uuid.UUID, year string) (map[
 	return result, nil
 }
 
-func (ls *LeaveService) GetAllLeaveRequests(status, year, department string) ([]models.LeaveRequest, error) {
+func (ls *LeaveService) GetAllLeaveRequests(status, year, department string, actorID uuid.UUID) ([]models.LeaveRequest, error) {
 	var requests []models.LeaveRequest
 
 	query := ls.db.Preload("User").Preload("Approver").Preload("WorkflowState.CurrentStep")
@@ -1007,7 +1007,44 @@ func (ls *LeaveService) GetAllLeaveRequests(status, year, department string) ([]
 	}
 
 	err := query.Order("created_at DESC").Find(&requests).Error
-	return requests, err
+	if err != nil {
+		return requests, err
+	}
+
+	var actor models.User
+	isSysAdmin := false
+	if err := ls.db.First(&actor, "id = ?", actorID).Error; err == nil {
+		isSysAdmin = actor.Role == models.RoleSysAdmin
+	}
+
+	for i := range requests {
+		if requests[i].Status != models.StatusPending || requests[i].WorkflowState == nil {
+			continue
+		}
+
+		if isSysAdmin {
+			requests[i].CanAction = true
+			continue
+		}
+
+		if ls.workflowSvc == nil {
+			continue
+		}
+
+		responsibleUsers, err := ls.workflowSvc.GetResponsibleUsers(requests[i].WorkflowState)
+		if err != nil {
+			continue
+		}
+
+		for _, u := range responsibleUsers {
+			if u.ID == actorID {
+				requests[i].CanAction = true
+				break
+			}
+		}
+	}
+
+	return requests, nil
 }
 
 func (ls *LeaveService) UpdateLeaveBalance(userID uuid.UUID, leaveType models.LeaveType, year int,

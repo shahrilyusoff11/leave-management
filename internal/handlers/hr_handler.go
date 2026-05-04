@@ -256,8 +256,9 @@ func (h *HRHandler) GetLeaveRequests(c *gin.Context) {
 	status := c.Query("status")
 	year := c.Query("year")
 	department := c.Query("department")
+	actorID := c.MustGet("user_id").(uuid.UUID)
 
-	requests, err := h.leaveService.GetAllLeaveRequests(status, year, department)
+	requests, err := h.leaveService.GetAllLeaveRequests(status, year, department, actorID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

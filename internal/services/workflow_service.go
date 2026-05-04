@@ -562,6 +562,28 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 		return admins, err
 	}
 
+	// Helper to find a HOD in the applicant's reporting chain without
+	// widening HOD approval to every HOD in the system.
+	getHODFromManagerChain := func(managerID *uuid.UUID, applicantID uuid.UUID) ([]models.User, error) {
+		seen := map[uuid.UUID]bool{applicantID: true}
+		for managerID != nil && !seen[*managerID] {
+			seen[*managerID] = true
+
+			var manager models.User
+			if err := s.db.Preload("RoleRef").First(&manager, "id = ?", *managerID).Error; err != nil {
+				return nil, err
+			}
+
+			if manager.Role == models.RoleHOD && manager.IsActive {
+				return []models.User{manager}, nil
+			}
+
+			managerID = manager.ManagerID
+		}
+
+		return getAdmins()
+	}
+
 	// 1. Handle HOD Role (Department Logic)
 	if state.CurrentStep.ResponsibleRole == models.RoleHOD && s.departmentSvc != nil {
 		// Get the leave request to find the applicant
@@ -605,8 +627,15 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 				}
 				return []models.User{*approver}, nil
 			}
-			// If resolution fails, fall through to role-based lookup
 		}
+
+		if leaveRequest.User.DepartmentID == nil {
+			return getHODFromManagerChain(leaveRequest.User.ManagerID, leaveRequest.UserID)
+		}
+
+		// If the department has no resolvable HOD, escalate instead of notifying
+		// every active HOD in the system.
+		return getAdmins()
 	}
 
 	// 2. Handle Manager Role (Direct Supervisor Logic)

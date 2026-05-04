@@ -69,6 +69,62 @@ func TestSmartRouting(t *testing.T) {
 		assert.Equal(t, hodID, users[0].ID, "Should route to HOD")
 	})
 
+	t.Run("HOD Approval Does Not Notify Unrelated Department HOD", func(t *testing.T) {
+		otherHODID := uuid.New()
+		otherHOD := models.User{ID: otherHODID, Email: "other-hod@example.com", Role: models.RoleHOD, IsActive: true, FirstName: "Other", LastName: "HOD"}
+		db.Create(&otherHOD)
+
+		otherDeptID := uuid.New()
+		otherDept := models.Department{ID: otherDeptID, Name: "Finance", HODID: &otherHODID}
+		db.Create(&otherDept)
+		db.Model(&otherHOD).Update("department_id", otherDeptID)
+
+		reqID := uuid.New()
+		req := models.LeaveRequest{ID: reqID, UserID: staffID, LeaveType: models.LeaveTypeAnnual}
+		db.Create(&req)
+
+		stepID := uuid.New()
+		step := models.WorkflowStep{ID: stepID, ResponsibleRole: models.RoleHOD}
+
+		state := models.LeaveRequestWorkflowState{
+			LeaveRequestID: reqID,
+			CurrentStep:    &step,
+		}
+
+		users, err := repoSvc.GetResponsibleUsers(&state)
+		assert.NoError(t, err)
+		assert.Len(t, users, 1)
+		assert.Equal(t, hodID, users[0].ID, "Should only route to applicant department HOD")
+		assert.NotEqual(t, otherHODID, users[0].ID, "Should not route to unrelated department HOD")
+	})
+
+	t.Run("HOD Approval Uses Manager Chain When Staff Has No Department", func(t *testing.T) {
+		noDeptManagerID := uuid.New()
+		noDeptManager := models.User{ID: noDeptManagerID, Email: "nodept-manager@example.com", Role: models.RoleManager, IsActive: true, ManagerID: &hodID, FirstName: "NoDept", LastName: "Manager"}
+		db.Create(&noDeptManager)
+
+		noDeptStaffID := uuid.New()
+		noDeptStaff := models.User{ID: noDeptStaffID, Email: "nodept-staff@example.com", Role: models.RoleStaff, IsActive: true, ManagerID: &noDeptManagerID, FirstName: "NoDept", LastName: "Staff"}
+		db.Create(&noDeptStaff)
+
+		reqID := uuid.New()
+		req := models.LeaveRequest{ID: reqID, UserID: noDeptStaffID, LeaveType: models.LeaveTypeAnnual}
+		db.Create(&req)
+
+		stepID := uuid.New()
+		step := models.WorkflowStep{ID: stepID, ResponsibleRole: models.RoleHOD}
+
+		state := models.LeaveRequestWorkflowState{
+			LeaveRequestID: reqID,
+			CurrentStep:    &step,
+		}
+
+		users, err := repoSvc.GetResponsibleUsers(&state)
+		assert.NoError(t, err)
+		assert.Len(t, users, 1)
+		assert.Equal(t, hodID, users[0].ID, "Should route to the HOD in the applicant's manager chain")
+	})
+
 	t.Run("HOD Applicant -> Routes to Manager (Bypass Self)", func(t *testing.T) {
 		reqID := uuid.New()
 		req := models.LeaveRequest{ID: reqID, UserID: hodID, LeaveType: models.LeaveTypeAnnual}
