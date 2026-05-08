@@ -26,15 +26,20 @@ type Role struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type UserRoleAssignment struct {
+	UserID    uuid.UUID `gorm:"type:uuid;primaryKey;column:user_id" json:"user_id"`
+	RoleID    uuid.UUID `gorm:"type:uuid;primaryKey;column:role_id" json:"role_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type User struct {
 	ID                uuid.UUID      `gorm:"type:uuid;primary_key" json:"id"`
 	Email             string         `gorm:"uniqueIndex;not null" json:"email"`
 	PasswordHash      string         `gorm:"not null" json:"-"`
 	FirstName         string         `gorm:"not null" json:"first_name"`
 	LastName          string         `gorm:"not null" json:"last_name"`
-	RoleID            uuid.UUID      `gorm:"type:uuid;index" json:"-"`
-	RoleRef           *Role          `gorm:"foreignKey:RoleID" json:"-"`
 	Role              UserRole       `gorm:"-" json:"role"`
+	Roles             []Role         `gorm:"many2many:user_roles;joinForeignKey:UserID;joinReferences:RoleID" json:"roles,omitempty"`
 	DepartmentID      *uuid.UUID     `json:"department_id"`
 	DepartmentRef     *Department    `gorm:"foreignKey:DepartmentID" json:"department_ref,omitempty"`
 	Position          string         `json:"position"`
@@ -66,57 +71,106 @@ func (r *Role) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+func (UserRoleAssignment) TableName() string {
+	return "user_roles"
+}
+
 func (u *User) BeforeSave(tx *gorm.DB) error {
-	if u.Role == "" {
-		if u.RoleRef != nil {
-			u.Role = u.RoleRef.Name
-		} else if u.RoleID != uuid.Nil {
-			var existingRole Role
-			if err := tx.First(&existingRole, "id = ?", u.RoleID).Error; err != nil {
-				return err
-			}
-			u.RoleRef = &existingRole
-			u.Role = existingRole.Name
-		}
+	if u.Role == "" && len(u.Roles) > 0 {
+		u.Role = PrimaryRoleFromRoles(u.Roles)
 	}
 
-	if u.Role == "" {
+	if u.Role == "" && len(u.Roles) == 0 {
 		return fmt.Errorf("role is required")
 	}
 
-	var role Role
-	if err := tx.Where("name = ?", u.Role).First(&role).Error; err != nil {
-		if err != gorm.ErrRecordNotFound {
+	if len(u.Roles) == 0 {
+		role, err := FindOrCreateRole(tx, u.Role)
+		if err != nil {
 			return err
 		}
-
-		role = Role{Name: u.Role}
-		if err := tx.Create(&role).Error; err != nil {
-			return err
-		}
+		u.Roles = []Role{*role}
 	}
 
-	u.RoleID = role.ID
-	u.RoleRef = &role
 	return nil
 }
 
 func (u *User) AfterFind(tx *gorm.DB) error {
-	if u.RoleRef != nil {
-		u.Role = u.RoleRef.Name
+	if len(u.Roles) == 0 {
+		if err := tx.Model(u).Association("Roles").Find(&u.Roles); err != nil {
+			return err
+		}
+	}
+
+	if len(u.Roles) > 0 {
+		u.Role = PrimaryRoleFromRoles(u.Roles)
 		return nil
 	}
 
-	if u.RoleID == uuid.Nil {
-		return nil
-	}
-
-	var role Role
-	if err := tx.First(&role, "id = ?", u.RoleID).Error; err != nil {
-		return err
-	}
-
-	u.RoleRef = &role
-	u.Role = role.Name
 	return nil
+}
+
+func FindOrCreateRole(tx *gorm.DB, roleName UserRole) (*Role, error) {
+	var role Role
+	if err := tx.Where("name = ?", roleName).First(&role).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return nil, err
+		}
+
+		role = Role{Name: roleName}
+		if err := tx.Create(&role).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	return &role, nil
+}
+
+func PrimaryRoleFromRoles(roles []Role) UserRole {
+	var primary UserRole
+	highest := -1
+	for _, role := range roles {
+		if level := RoleLevel(role.Name); level > highest {
+			highest = level
+			primary = role.Name
+		}
+	}
+	return primary
+}
+
+func RoleLevel(role UserRole) int {
+	switch role {
+	case RoleSysAdmin:
+		return 100
+	case RoleAdmin:
+		return 80
+	case RoleHR:
+		return 60
+	case RoleHOD:
+		return 40
+	case RoleManager:
+		return 30
+	case RoleStaff:
+		return 10
+	default:
+		return 0
+	}
+}
+
+func (u *User) HasRole(role UserRole) bool {
+	for _, assigned := range u.Roles {
+		if assigned.Name == role {
+			return true
+		}
+	}
+	return u.Role == role
+}
+
+func (u *User) HasAnyRole(roles ...UserRole) bool {
+	for _, role := range roles {
+		if u.HasRole(role) {
+			return true
+		}
+	}
+	return false
 }

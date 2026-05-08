@@ -555,11 +555,22 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 	// Helper to fetch admins
 	getAdmins := func() ([]models.User, error) {
 		var admins []models.User
-		err := s.db.Preload("RoleRef").
-			Joins("JOIN roles ON roles.id = users.role_id").
+		err := s.db.Preload("Roles").
+			Joins("JOIN user_roles ON user_roles.user_id = users.id").
+			Joins("JOIN roles ON roles.id = user_roles.role_id").
 			Where("roles.name IN ? AND users.is_active = ?", []models.UserRole{models.RoleAdmin, models.RoleSysAdmin}, true).
 			Find(&admins).Error
 		return admins, err
+	}
+
+	getUsersByRole := func(role models.UserRole) ([]models.User, error) {
+		var users []models.User
+		err := s.db.Preload("Roles").
+			Joins("JOIN user_roles ON user_roles.user_id = users.id").
+			Joins("JOIN roles ON roles.id = user_roles.role_id").
+			Where("roles.name = ? AND users.is_active = ?", role, true).
+			Find(&users).Error
+		return users, err
 	}
 
 	// Helper to find a HOD in the applicant's reporting chain without
@@ -570,11 +581,11 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 			seen[*managerID] = true
 
 			var manager models.User
-			if err := s.db.Preload("RoleRef").First(&manager, "id = ?", *managerID).Error; err != nil {
+			if err := s.db.Preload("Roles").First(&manager, "id = ?", *managerID).Error; err != nil {
 				return nil, err
 			}
 
-			if manager.Role == models.RoleHOD && manager.IsActive {
+			if manager.HasRole(models.RoleHOD) && manager.IsActive {
 				return []models.User{manager}, nil
 			}
 
@@ -588,14 +599,14 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 	if state.CurrentStep.ResponsibleRole == models.RoleHOD && s.departmentSvc != nil {
 		// Get the leave request to find the applicant
 		var leaveRequest models.LeaveRequest
-		if err := s.db.Preload("User.RoleRef").First(&leaveRequest, "id = ?", state.LeaveRequestID).Error; err != nil {
+		if err := s.db.Preload("User.Roles").First(&leaveRequest, "id = ?", state.LeaveRequestID).Error; err != nil {
 			return nil, fmt.Errorf("failed to load leave request: %w", err)
 		}
 
 		// [SMART ROUTING] HOD Self-Approval Bypass
 		// If the applicant IS the HOD (or acting HOD), they cannot approve themselves.
 		// Route to their Reporting Manager instead.
-		if leaveRequest.User.Role == models.RoleHOD {
+		if leaveRequest.User.HasRole(models.RoleHOD) {
 			// If they have a direct manager, route to them
 			if leaveRequest.User.ManagerID != nil {
 				// We reuse the Manager Logic below essentially, but let's be explicit
@@ -630,7 +641,18 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 		}
 
 		if leaveRequest.User.DepartmentID == nil {
-			return getHODFromManagerChain(leaveRequest.User.ManagerID, leaveRequest.UserID)
+			if leaveRequest.User.ManagerID != nil {
+				return getHODFromManagerChain(leaveRequest.User.ManagerID, leaveRequest.UserID)
+			}
+
+			hods, err := getUsersByRole(models.RoleHOD)
+			if err != nil {
+				return nil, err
+			}
+			if len(hods) > 0 {
+				return hods, nil
+			}
+			return getAdmins()
 		}
 
 		// If the department has no resolvable HOD, escalate instead of notifying
@@ -676,11 +698,7 @@ func (s *WorkflowService) GetResponsibleUsers(state *models.LeaveRequestWorkflow
 	}
 
 	// 3. Default: Role-based lookup (HR, Admin, etc.)
-	var users []models.User
-	err := s.db.Preload("RoleRef").
-		Joins("JOIN roles ON roles.id = users.role_id").
-		Where("roles.name = ? AND users.is_active = ?", state.CurrentStep.ResponsibleRole, true).
-		Find(&users).Error
+	users, err := getUsersByRole(state.CurrentStep.ResponsibleRole)
 
 	// [SMART ROUTING] Filter out Applicant from Role-Based Pool
 	if err == nil {

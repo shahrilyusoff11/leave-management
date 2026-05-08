@@ -17,12 +17,17 @@ func Migrate(db *gorm.DB) error {
 		fmt.Printf("Note: UUID extension might not be available: %v\n", err)
 	}
 
+	if err := db.SetupJoinTable(&models.User{}, "Roles", &models.UserRoleAssignment{}); err != nil {
+		return fmt.Errorf("failed to setup user roles join table: %w", err)
+	}
+
 	// Run migrations
 	err := db.AutoMigrate(
 		// Department must come before User (FK dependency)
 		&models.Role{},
 		&models.Department{},
 		&models.User{},
+		&models.UserRoleAssignment{},
 		&models.HODDelegation{},
 		&models.UserDelegation{},
 		&models.LeaveRequest{},
@@ -67,7 +72,8 @@ func Migrate(db *gorm.DB) error {
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_workflow_states_request_id ON leave_request_workflow_states(leave_request_id)")
 	// Department and delegation indexes
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_users_department_id ON users(department_id)")
-	db.Exec("CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id)")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_hod_delegations_department_id ON hod_delegations(department_id)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_hod_delegations_delegate_id ON hod_delegations(delegate_id)")
 	db.Exec("CREATE INDEX IF NOT EXISTS idx_hod_delegations_dates ON hod_delegations(start_date, end_date)")
@@ -103,28 +109,26 @@ func seedRoles(db *gorm.DB) error {
 }
 
 func migrateUserRoles(db *gorm.DB) error {
-	if err := db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id uuid").Error; err != nil {
-		return err
-	}
-
 	if legacyRoleColumnExists(db) {
 		if err := db.Exec(`
-			UPDATE users
-			SET role_id = roles.id
-			FROM roles
-			WHERE users.role_id IS NULL
-			  AND users.role = roles.name
+			INSERT INTO user_roles (user_id, role_id)
+			SELECT users.id, roles.id
+			FROM users
+			JOIN roles ON users.role = roles.name
+			ON CONFLICT DO NOTHING
 		`).Error; err != nil {
 			return err
 		}
 	}
 
-	if err := db.Exec("ALTER TABLE users ALTER COLUMN role_id SET NOT NULL").Error; err != nil {
-		return err
-	}
-
-	if legacyRoleColumnExists(db) {
-		if err := db.Exec("ALTER TABLE users DROP COLUMN IF EXISTS role").Error; err != nil {
+	if legacyRoleIDColumnExists(db) {
+		if err := db.Exec(`
+			INSERT INTO user_roles (user_id, role_id)
+			SELECT users.id, users.role_id
+			FROM users
+			WHERE users.role_id IS NOT NULL
+			ON CONFLICT DO NOTHING
+		`).Error; err != nil {
 			return err
 		}
 	}
@@ -138,6 +142,19 @@ func legacyRoleColumnExists(db *gorm.DB) bool {
 		SELECT COUNT(*)
 		FROM information_schema.columns
 		WHERE table_name = 'users' AND column_name = 'role'
+	`).Scan(&count).Error; err != nil {
+		return false
+	}
+
+	return count > 0
+}
+
+func legacyRoleIDColumnExists(db *gorm.DB) bool {
+	var count int64
+	if err := db.Raw(`
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_name = 'users' AND column_name = 'role_id'
 	`).Scan(&count).Error; err != nil {
 		return false
 	}

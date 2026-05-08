@@ -270,7 +270,7 @@ func (ls *LeaveService) ProcessWorkflowAction(requestID, actorID uuid.UUID, acti
 
 	// Get Actor details
 	var actor models.User
-	if err := ls.db.First(&actor, "id = ?", actorID).Error; err != nil {
+	if err := ls.db.Preload("Roles").First(&actor, "id = ?", actorID).Error; err != nil {
 		return nil, err
 	}
 
@@ -299,7 +299,7 @@ func (ls *LeaveService) ProcessWorkflowAction(requestID, actorID uuid.UUID, acti
 	}
 
 	// SysAdmin override
-	if !isAuthorized && actor.Role == models.RoleSysAdmin {
+	if !isAuthorized && actor.HasRole(models.RoleSysAdmin) {
 		isAuthorized = true
 	}
 
@@ -879,7 +879,7 @@ func (ls *LeaveService) GetTeamLeaveRequests(managerID uuid.UUID, status, year s
 
 	// Double check for SysAdmin override efficiently
 	var manager models.User
-	if err := ls.db.First(&manager, "id = ?", managerID).Error; err == nil && manager.Role == models.RoleSysAdmin {
+	if err := ls.db.Preload("Roles").First(&manager, "id = ?", managerID).Error; err == nil && manager.HasRole(models.RoleSysAdmin) {
 		for i := range requests {
 			if requests[i].Status == models.StatusPending {
 				requests[i].CanAction = true
@@ -1013,8 +1013,8 @@ func (ls *LeaveService) GetAllLeaveRequests(status, year, department string, act
 
 	var actor models.User
 	isSysAdmin := false
-	if err := ls.db.First(&actor, "id = ?", actorID).Error; err == nil {
-		isSysAdmin = actor.Role == models.RoleSysAdmin
+	if err := ls.db.Preload("Roles").First(&actor, "id = ?", actorID).Error; err == nil {
+		isSysAdmin = actor.HasRole(models.RoleSysAdmin)
 	}
 
 	for i := range requests {

@@ -65,7 +65,8 @@ func (d *Database) Close() error {
 func (d *Database) CreateSuperAdmin(email, passwordHash, firstName, lastName string) error {
 	var count int64
 	d.DB.Model(&models.User{}).
-		Joins("JOIN roles ON roles.id = users.role_id").
+		Joins("JOIN user_roles ON user_roles.user_id = users.id").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
 		Where("roles.name = ?", models.RoleSysAdmin).
 		Count(&count)
 

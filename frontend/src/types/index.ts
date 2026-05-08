@@ -1,11 +1,19 @@
 export type UserRole = 'sysadmin' | 'admin' | 'hr' | 'manager' | 'hod' | 'staff';
 
+export interface Role {
+    id: string;
+    name: UserRole;
+    created_at: string;
+    updated_at: string;
+}
+
 export interface User {
     id: string;
     email: string;
     first_name: string;
     last_name: string;
     role: UserRole;
+    roles?: Role[];
     department_id?: string;
     department_ref?: Department;
     position?: string;

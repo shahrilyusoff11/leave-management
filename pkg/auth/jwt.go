@@ -11,9 +11,10 @@ import (
 )
 
 type Claims struct {
-	UserID uuid.UUID       `json:"user_id"`
-	Email  string          `json:"email"`
-	Role   models.UserRole `json:"role"`
+	UserID uuid.UUID         `json:"user_id"`
+	Email  string            `json:"email"`
+	Role   models.UserRole   `json:"role"`
+	Roles  []models.UserRole `json:"roles"`
 	jwt.RegisteredClaims
 }
 
@@ -27,10 +28,19 @@ func NewJWTManager(secretKey string, tokenDuration time.Duration) *JWTManager {
 }
 
 func (manager *JWTManager) Generate(user *models.User) (string, *Claims, error) {
+	roles := make([]models.UserRole, 0, len(user.Roles))
+	for _, role := range user.Roles {
+		roles = append(roles, role.Name)
+	}
+	if len(roles) == 0 && user.Role != "" {
+		roles = append(roles, user.Role)
+	}
+
 	claims := Claims{
 		UserID: user.ID,
 		Email:  user.Email,
 		Role:   user.Role,
+		Roles:  roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(manager.tokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

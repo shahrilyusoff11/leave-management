@@ -53,16 +53,17 @@ func (h *HRHandler) GetUser(c *gin.Context) {
 }
 
 type CreateUserRequest struct {
-	Email           string          `json:"email" binding:"required,email"`
-	Password        string          `json:"password" binding:"required,min=8"`
-	FirstName       string          `json:"first_name" binding:"required"`
-	LastName        string          `json:"last_name" binding:"required"`
-	Role            models.UserRole `json:"role" binding:"required"`
-	DepartmentID    *uuid.UUID      `json:"department_id"`
-	Position        string          `json:"position" binding:"required"`
-	ManagerID       *uuid.UUID      `json:"manager_id"`
-	JoinedDate      string          `json:"joined_date" binding:"required"`
-	ProbationMonths int             `json:"probation_months" default:"3"`
+	Email           string            `json:"email" binding:"required,email"`
+	Password        string            `json:"password" binding:"required,min=8"`
+	FirstName       string            `json:"first_name" binding:"required"`
+	LastName        string            `json:"last_name" binding:"required"`
+	Role            models.UserRole   `json:"role" binding:"required"`
+	Roles           []models.UserRole `json:"roles"`
+	DepartmentID    *uuid.UUID        `json:"department_id"`
+	Position        string            `json:"position" binding:"required"`
+	ManagerID       *uuid.UUID        `json:"manager_id"`
+	JoinedDate      string            `json:"joined_date" binding:"required"`
+	ProbationMonths int               `json:"probation_months" default:"3"`
 }
 
 func (h *HRHandler) CreateUser(c *gin.Context) {
@@ -80,11 +81,14 @@ func (h *HRHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	// HR cannot create SysAdmin or Admin users
-	if (userRole == models.RoleHR) &&
-		(req.Role == models.RoleSysAdmin || req.Role == models.RoleAdmin) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot create admin users"})
-		return
+	rolesToAssign := requestedRoles(req.Role, req.Roles)
+	for _, role := range rolesToAssign {
+		// HR cannot create SysAdmin or Admin users
+		if (userRole == models.RoleHR) &&
+			(role == models.RoleSysAdmin || role == models.RoleAdmin) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot create admin users"})
+			return
+		}
 	}
 
 	// Hash password
@@ -108,6 +112,7 @@ func (h *HRHandler) CreateUser(c *gin.Context) {
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
+	newUser.Roles = roleModels(rolesToAssign)
 
 	joinedDate, err := time.Parse("2006-01-02", req.JoinedDate)
 	if err == nil {
@@ -330,12 +335,13 @@ func (h *HRHandler) ConfirmProbation(c *gin.Context) {
 }
 
 type UpdateUserRequest struct {
-	FirstName    string          `json:"first_name"`
-	LastName     string          `json:"last_name"`
-	Role         models.UserRole `json:"role"`
-	DepartmentID *uuid.UUID      `json:"department_id"`
-	Position     string          `json:"position"`
-	ManagerID    *uuid.UUID      `json:"manager_id"`
+	FirstName    string            `json:"first_name"`
+	LastName     string            `json:"last_name"`
+	Role         models.UserRole   `json:"role"`
+	Roles        []models.UserRole `json:"roles"`
+	DepartmentID *uuid.UUID        `json:"department_id"`
+	Position     string            `json:"position"`
+	ManagerID    *uuid.UUID        `json:"manager_id"`
 }
 
 func (h *HRHandler) UpdateUser(c *gin.Context) {
@@ -360,10 +366,13 @@ func (h *HRHandler) UpdateUser(c *gin.Context) {
 
 	// Validate role permissions
 	currentRole := c.MustGet("user_role").(models.UserRole)
-	if currentRole == models.RoleHR &&
-		(req.Role == models.RoleSysAdmin || req.Role == models.RoleAdmin) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Cannot assign admin roles"})
-		return
+	rolesToAssign := requestedRoles(req.Role, req.Roles)
+	for _, role := range rolesToAssign {
+		if currentRole == models.RoleHR &&
+			(role == models.RoleSysAdmin || role == models.RoleAdmin) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot assign admin roles"})
+			return
+		}
 	}
 
 	// Update fields
@@ -373,8 +382,9 @@ func (h *HRHandler) UpdateUser(c *gin.Context) {
 	if req.LastName != "" {
 		user.LastName = req.LastName
 	}
-	if req.Role != "" {
-		user.Role = req.Role
+	if len(rolesToAssign) > 0 {
+		user.Role = models.PrimaryRoleFromRoles(roleModels(rolesToAssign))
+		user.Roles = roleModels(rolesToAssign)
 	}
 	if req.DepartmentID != nil {
 		user.DepartmentID = req.DepartmentID
@@ -431,4 +441,31 @@ func (h *HRHandler) ToggleUserActive(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User " + status + " successfully"})
+}
+
+func requestedRoles(primary models.UserRole, roles []models.UserRole) []models.UserRole {
+	seen := map[models.UserRole]bool{}
+	result := make([]models.UserRole, 0, len(roles)+1)
+
+	for _, role := range roles {
+		if role == "" || seen[role] {
+			continue
+		}
+		seen[role] = true
+		result = append(result, role)
+	}
+
+	if primary != "" && !seen[primary] {
+		result = append(result, primary)
+	}
+
+	return result
+}
+
+func roleModels(roleNames []models.UserRole) []models.Role {
+	roles := make([]models.Role, 0, len(roleNames))
+	for _, roleName := range roleNames {
+		roles = append(roles, models.Role{Name: roleName})
+	}
+	return roles
 }

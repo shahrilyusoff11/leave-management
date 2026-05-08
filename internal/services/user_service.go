@@ -29,20 +29,20 @@ func NewUserService(db *gorm.DB, auditLogger *logger.AuditLogger, leaveTypeConfi
 
 func (us *UserService) GetUserByEmail(email string) (*models.User, error) {
 	var user models.User
-	err := us.db.Preload("RoleRef").Where("email = ?", email).First(&user).Error
+	err := us.db.Preload("Roles").Where("email = ?", email).First(&user).Error
 	return &user, err
 }
 
 func (us *UserService) GetUser(id uuid.UUID) (*models.User, error) {
 	var user models.User
-	err := us.db.Preload("RoleRef").First(&user, "id = ?", id).Error
+	err := us.db.Preload("Roles").First(&user, "id = ?", id).Error
 	return &user, err
 }
 
 func (us *UserService) GetUserWithDetails(id uuid.UUID) (*models.User, error) {
 	var user models.User
 	err := us.db.Preload("Manager").
-		Preload("RoleRef").
+		Preload("Roles").
 		Preload("DepartmentRef").
 		Preload("LeaveEntitlements").
 		Preload("ManagedUsers").
@@ -52,7 +52,7 @@ func (us *UserService) GetUserWithDetails(id uuid.UUID) (*models.User, error) {
 
 func (us *UserService) GetAllUsers() ([]models.User, error) {
 	var users []models.User
-	err := us.db.Preload("RoleRef").Preload("Manager").Preload("DepartmentRef").Find(&users).Error
+	err := us.db.Preload("Roles").Preload("Manager").Preload("DepartmentRef").Find(&users).Error
 	return users, err
 }
 
@@ -72,6 +72,10 @@ func (us *UserService) CreateUser(user *models.User) error {
 	}
 
 	return us.db.Transaction(func(tx *gorm.DB) error {
+		if err := us.normalizeUserRoles(tx, user); err != nil {
+			return err
+		}
+
 		if err := tx.Create(user).Error; err != nil {
 			return err
 		}
@@ -178,7 +182,19 @@ func (us *UserService) GetTeamMembers(managerID uuid.UUID) ([]models.User, error
 
 func (us *UserService) UpdateUser(user *models.User) error {
 	user.UpdatedAt = time.Now()
-	return us.db.Save(user).Error
+	return us.db.Transaction(func(tx *gorm.DB) error {
+		if err := us.normalizeUserRoles(tx, user); err != nil {
+			return err
+		}
+
+		if len(user.Roles) > 0 {
+			if err := tx.Model(user).Association("Roles").Replace(user.Roles); err != nil {
+				return err
+			}
+		}
+
+		return tx.Save(user).Error
+	})
 }
 
 func (us *UserService) SearchUsers(query string) ([]models.User, error) {
@@ -190,4 +206,39 @@ func (us *UserService) SearchUsers(query string) ([]models.User, error) {
 	err := us.db.Where("first_name ILIKE ? OR last_name ILIKE ? OR email ILIKE ?", search, search, search).
 		Limit(20).Find(&users).Error
 	return users, err
+}
+
+func (us *UserService) normalizeUserRoles(tx *gorm.DB, user *models.User) error {
+	requested := make([]models.UserRole, 0, len(user.Roles)+1)
+	seen := map[models.UserRole]bool{}
+
+	for _, role := range user.Roles {
+		if role.Name == "" || seen[role.Name] {
+			continue
+		}
+		seen[role.Name] = true
+		requested = append(requested, role.Name)
+	}
+
+	if user.Role != "" && !seen[user.Role] {
+		seen[user.Role] = true
+		requested = append(requested, user.Role)
+	}
+
+	if len(requested) == 0 {
+		return nil
+	}
+
+	roles := make([]models.Role, 0, len(requested))
+	for _, roleName := range requested {
+		role, err := models.FindOrCreateRole(tx, roleName)
+		if err != nil {
+			return err
+		}
+		roles = append(roles, *role)
+	}
+
+	user.Roles = roles
+	user.Role = models.PrimaryRoleFromRoles(roles)
+	return nil
 }

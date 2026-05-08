@@ -44,20 +44,20 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
 		c.Set("user_role", claims.Role)
+		c.Set("user_roles", claims.Roles)
 		c.Next()
 	}
 }
 
 func (m *AuthMiddleware) RequireRole(requiredRole models.UserRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, exists := c.Get("user_role")
-		if !exists {
+		if _, exists := c.Get("user_role"); !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User role not found"})
 			c.Abort()
 			return
 		}
 
-		if role != requiredRole {
+		if !contextHasRole(c, requiredRole) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 			c.Abort()
 			return
@@ -69,16 +69,14 @@ func (m *AuthMiddleware) RequireRole(requiredRole models.UserRole) gin.HandlerFu
 
 func (m *AuthMiddleware) RequireAnyRole(requiredRoles []models.UserRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role, exists := c.Get("user_role")
-		if !exists {
+		if _, exists := c.Get("user_role"); !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User role not found"})
 			c.Abort()
 			return
 		}
 
-		userRole := role.(models.UserRole)
 		for _, requiredRole := range requiredRoles {
-			if userRole == requiredRole {
+			if contextHasRole(c, requiredRole) {
 				c.Next()
 				return
 			}
@@ -87,4 +85,26 @@ func (m *AuthMiddleware) RequireAnyRole(requiredRoles []models.UserRole) gin.Han
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 		c.Abort()
 	}
+}
+
+func contextHasRole(c *gin.Context, requiredRole models.UserRole) bool {
+	if roles, exists := c.Get("user_roles"); exists {
+		switch assigned := roles.(type) {
+		case []models.UserRole:
+			for _, role := range assigned {
+				if role == requiredRole {
+					return true
+				}
+			}
+		case []interface{}:
+			for _, role := range assigned {
+				if role == requiredRole || role == string(requiredRole) {
+					return true
+				}
+			}
+		}
+	}
+
+	role, exists := c.Get("user_role")
+	return exists && role == requiredRole
 }
